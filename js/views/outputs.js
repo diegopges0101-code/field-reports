@@ -5,6 +5,7 @@ import { state, listPhotos, ensurePhotoData, sync, pendingCount } from '../store
 import { TEMPLATES, missingRequired } from '../templates.js';
 import { buildDoc, emailSubject, emailBody, whatsappText } from '../english.js';
 import { buildPdf } from '../pdf.js';
+import { renderAnnotated } from '../annot.js';
 
 function peopleFor(r) {
   const src = r.status === 'issued' && r.snapshot?.people ? r.snapshot.people : state.people;
@@ -13,7 +14,7 @@ function peopleFor(r) {
 function configFor(r) { return r.status === 'issued' && r.snapshot?.config ? r.snapshot.config : state.config; }
 
 async function makeModel(r) {
-  const photos = await listPhotos(r.id);
+  const photos = await listPhotos(r.id, { cachedFirst: true });
   return { model: buildDoc({ report: r, photos, people: peopleFor(r) }), photos };
 }
 
@@ -24,7 +25,13 @@ export async function generatePdf(r, onProgress) {
     await ensurePhotoData(photos, (a, b) => onProgress?.(`Descargando fotos ${a}/${b}…`));
   }
   onProgress?.('Creando PDF…');
-  const photoData = Object.fromEntries(photos.filter((p) => p.dataUrl).map((p) => [p.id, p.dataUrl]));
+  // Las marcas se dibujan sobre la foto con sus textos en inglés
+  const en = r.english || {};
+  const photoData = {};
+  for (const p of photos.filter((x) => x.dataUrl)) {
+    const tr = (a) => { const e = en[`photo.${p.id}.a.${a.id}`]; return e && e.src === (a.text || '').trim() && e.en?.trim() ? e.en.trim() : a.text; };
+    photoData[p.id] = p.annots?.length ? await renderAnnotated(p.dataUrl, p.annots, { maxSide: 1800, quality: 0.86, tr }) : p.dataUrl;
+  }
   const cfg = configFor(r);
   const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: cfg.contact_line, logo: state.logo, photoData });
   return { blob: new Blob([bytes], { type: 'application/pdf' }), model };
