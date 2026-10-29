@@ -139,23 +139,36 @@ export async function buildPdf(model, opts) {
     roundRect(p, 560, 174, 376, 330, { tr: 80 }, C.p3);
     roundRect(p, 260, 174, 376, 330, { tr: 80 }, C.p2);
     roundRect(p, 0, 174, 330, 330, { tr: 80 }, C.p1);
+    // Devuelve cuántas filas cupieron (lo que no cabe pasa a una sección de contenido)
     const col = (x, w, heading, rows) => {
+      if (!rows.length) return 0;
       let y = 230;
       text(p, heading, x, y, 15, fonts.bold, C.dark); y += 30;
-      for (const r of rows) {
+      for (const [i, r] of rows.entries()) {
         const lines = wrapRuns(r, w, fonts, 10.5);
-        for (const ln of lines) { if (y > 490) return; drawRunsLine(p, ln, x, y, fonts, 10.5, C.dark); y += 14; }
+        if (y + lines.length * 14 > 492) {
+          text(p, `+ ${rows.length - i} more (see next pages)`, x, y, 9.5, fonts.reg, C.mid);
+          return i;
+        }
+        for (const ln of lines) { drawRunsLine(p, ln, x, y, fonts, 10.5, C.dark); y += 14; }
         y += 8;
       }
+      return rows.length;
     };
     col(35, 270, 'Technician Details:', [
-      [{ text: 'Technicians: ', bold: true }, { text: model.technicians || '-' }],
+      model.technicians ? [{ text: 'Technicians: ', bold: true }, { text: model.technicians }] : null,
       model.supervisor ? [{ text: 'Supervisor: ', bold: true }, { text: model.supervisor }] : null,
-      [{ text: 'Date: ', bold: true }, { text: model.dateText + (model.timeText ? ` (${model.timeText})` : '') }],
+      model.dateText ? [{ text: 'Date: ', bold: true }, { text: model.dateText + (model.timeText ? ` (${model.timeText})` : '') }] : null,
       model.gps ? [{ text: 'Location: ', bold: true }, { text: model.gps }] : null,
     ].filter(Boolean));
-    if (model.kind === 'survey') col(365, 240, 'Purpose:', model.objective.slice(0, 6).map((o) => [{ text: o, bold: true }]));
-    else col(365, 240, 'Project Details:', model.equipment.slice(0, 7).map((e) => [{ text: 'Equipment: ', bold: true }, { text: e.label }, ...(e.value ? [{ text: '\n' }, { text: 'Model Numbers: ', bold: true }, { text: e.value }] : [])]));
+    if (model.kind === 'survey') col(365, 240, 'Purpose:', model.objective.map((o) => [{ text: o, bold: true }]));
+    else {
+      const eqRows = model.equipment.map((e) => [{ text: 'Equipment: ', bold: true }, { text: e.label }, ...(e.value ? [{ text: '\n' }, { text: 'Model Numbers: ', bold: true }, { text: e.value }] : [])]);
+      const shown = col(365, 240, 'Project Details:', eqRows);
+      if (shown < model.equipment.length) {
+        model = { ...model, sections: [{ title: 'Equipment (continued)', blocks: [{ type: 'kv', rows: model.equipment.slice(shown).map((e) => [e.label, e.value || '-']) }] }, ...model.sections] };
+      }
+    }
     if (model.kind === 'installation' && model.network.length) col(665, 240, 'Network Configuration:', model.network.map(([k, v]) => [{ text: `${k}: `, bold: true }, { text: v }]));
     else if (model.result) col(665, 240, 'Result:', [[{ text: model.result, bold: true }]]);
   }

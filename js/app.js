@@ -11,24 +11,41 @@ const root = () => $('#app');
 // ---------------------------------------------------------------------
 // Barra superior + indicador de sincronización
 // ---------------------------------------------------------------------
-function topbar() {
+function navLinks() {
   const admin = state.user?.role === 'admin';
-  const link = (href, label) => h('a', { href, class: location.hash === href || (href === '#/' && (location.hash === '' || location.hash === '#/')) ? 'active' : '' }, label);
+  const cur = location.hash.split('?')[0] || '#/';
+  const link = (href, label) => h('a', { href, class: cur === href || (href === '#/' && (cur === '' || cur === '#/' || cur.startsWith('#/r/'))) ? 'active' : '' }, label);
+  return [link('#/', 'Informes'), admin ? [link('#/admin/users', 'Usuarios'), link('#/admin/catalog', 'Catálogo'), link('#/admin/company', 'Empresa')] : null];
+}
+
+function openMenu() {
+  const close = () => { back.remove(); menu.remove(); };
+  const back = h('div', { class: 'menu-back', onclick: close });
+  const menu = h('div', { class: 'menu', onclick: (e) => { if (e.target.tagName === 'A') close(); } },
+    h('div', { class: 'who' }, state.user?.name, h('br'), h('span', { class: 'tiny' }, { admin: 'Administrador', supervisor: 'Supervisor', technician: 'Técnico' }[state.user?.role] || '')),
+    navLinks(),
+    h('button', { onclick: () => { close(); sync(); toast('Sincronizando…'); } }, '↻ Sincronizar ahora'),
+    h('button', { onclick: () => { close(); logout(); } }, 'Salir'),
+    h('div', { class: 'who tiny', style: { borderBottom: 0, borderTop: '1px solid #eef0f3', marginTop: '4px' } }, `v${APP_VERSION}`));
+  document.body.append(back, menu);
+}
+
+function topbar() {
   return h('header', { class: 'topbar' },
     h('a', { href: '#/', class: 'brand' }, state.logo ? h('img', { src: state.logo, alt: '' }) : null, h('span', {}, 'Field Reports')),
-    h('nav', {}, link('#/', 'Informes'), admin ? [link('#/admin/users', 'Usuarios'), link('#/admin/catalog', 'Catálogo'), link('#/admin/company', 'Empresa')] : null),
+    h('nav', { class: 'topnav' }, navLinks()),
     h('span', { id: 'sync-pill', class: 'pill' }),
-    h('button', { class: 'btn small ghost', title: state.user?.name, onclick: logout }, 'Salir'));
+    h('button', { class: 'menu-btn', 'aria-label': 'Menú', onclick: openMenu }, '☰'));
 }
 
 async function updatePill(detail) {
   const el = $('#sync-pill');
   if (!el) return;
   const pend = detail?.pending || await pendingCount();
-  if (!navigator.onLine) { el.className = 'pill bad'; el.textContent = pend.total ? `Sin conexión · ${pend.total} pendiente(s)` : 'Sin conexión'; }
-  else if (state.syncing) { el.className = 'pill warn'; el.textContent = 'Sincronizando…'; }
-  else if (pend.total) { el.className = 'pill warn'; el.textContent = `${pend.total} pendiente(s)`; el.title = state.lastError || ''; }
-  else { el.className = 'pill ok'; el.textContent = '✓ Al día'; }
+  if (!navigator.onLine) { el.className = 'pill bad'; el.textContent = pend.total ? `Sin red · ${pend.total}` : 'Sin red'; el.title = 'Sin conexión: se guarda en este dispositivo'; }
+  else if (state.syncing) { el.className = 'pill warn'; el.textContent = 'Subiendo…'; }
+  else if (pend.total) { el.className = 'pill warn'; el.textContent = `${pend.total} por subir`; el.title = state.lastError || ''; }
+  else { el.className = 'pill ok'; el.textContent = 'Al día'; }
 }
 window.addEventListener('sync', (e) => updatePill(e.detail));
 window.addEventListener('online', () => updatePill());
@@ -49,7 +66,7 @@ function loginView() {
       const r = await api('login', { username: user.value, password: pw.value }, { timeout: 120000 });
       setToken(r.token);
       if (r.mustChange) return render(changePasswordView(pw.value));
-      await start();
+      await start({ fresh: true });
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     btn.disabled = false; btn.textContent = 'Entrar';
   } },
@@ -71,7 +88,7 @@ function changePasswordView(oldPw = '') {
     if (n1.value !== n2.value) { err.textContent = 'Las contraseñas no coinciden'; err.hidden = false; return; }
     try {
       const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value }, { timeout: 120000 });
-      setToken(r.token); toast('Contraseña cambiada'); await start();
+      setToken(r.token); toast('Contraseña cambiada'); await start({ fresh: true });
     } catch (ex) {
       err.textContent = ex.code === 'offline'
         ? 'El servidor no respondió a tiempo. Puede que el cambio SÍ se haya guardado: pulsa "Salir" y entra con la contraseña NUEVA; si no funciona, con la antigua.'
@@ -118,9 +135,9 @@ async function route() {
   }
 }
 
-async function start() {
+async function start({ fresh = false } = {}) {
   try {
-    await bootstrap();
+    await bootstrap({ cachedFirst: !fresh });
   } catch (e) {
     if (e.code === 'must_change') return render(changePasswordView());
     if (e.code === 'auth') return render(loginView());
@@ -134,9 +151,19 @@ async function start() {
 
 window.addEventListener('auth-expired', () => { state.user = null; render(loginView()); toast('Sesión caducada: vuelve a entrar'); });
 window.addEventListener('must-change', () => render(changePasswordView()));
+window.addEventListener('boot-refreshed', () => { const b = $('.topbar'); if (b && state.user) b.replaceWith(topbar()); updatePill(); });
 
 // Arranque
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Versión nueva publicada: se aplica sola si no estás escribiendo un informe
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
+    if (!location.hash.startsWith('#/r/')) location.reload();
+    else toast('Hay una versión nueva de la app: se aplicará al volver a la lista', 6000);
+  });
+}
 if (API_URL.includes('PEGA_AQUI')) {
   render(h('div', { class: 'page' }, h('div', { class: 'error' }, 'Falta configurar la URL de Apps Script en js/config.js (ver guía, paso 4).')));
 } else if (getToken()) start(); else render(loginView());

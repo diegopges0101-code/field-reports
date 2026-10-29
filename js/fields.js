@@ -1,6 +1,7 @@
 // Dibuja los campos del formulario a partir de las plantillas (templates.js)
 import { h, uid, toast } from './ui.js';
 import { photosField } from './photos.js';
+import { OPT } from './templates.js';
 
 /**
  * ctx = { data, set(key, value, rerender), people, catalog, readOnly, report }
@@ -52,6 +53,8 @@ export function renderField(f, ctx) {
       return wrap(equipmentEditor(ctx.catalog, v || [], ro, (val, re) => set(val, re)));
     case 'segments':
       return wrap(segmentsEditor(v || [], ro, (val, re) => set(val, re)));
+    case 'antennaTests':
+      return wrap(antennaTests(ctx, ro));
     case 'photos':
       return wrap(photosField(ctx.report, f.photoCategory, ro));
   }
@@ -171,16 +174,35 @@ function antennaMount(catalog, value0, ro, onChange0) {
 const KIND_LABEL = { antenna: 'Antena', router: 'Router', cable: 'Cable', accessory: 'Accesorio', sim: 'Tarjeta SIM' };
 const KINDS_BY_MAN = { Starlink: ['antenna', 'router', 'cable', 'accessory'], Peplink: ['router', 'accessory'], SIM: ['sim'], Other: ['accessory', 'cable', 'router'] };
 
+const CARD_TITLE = { antenna: 'Antena Starlink', router: 'Router', cable: 'Cable', accessory: 'Accesorio', sim: 'Tarjeta SIM' };
+
 function equipmentEditor(catalog, rows0, ro, onChange0) {
   let rows = rows0;
   const onChange = (nv, re) => { rows = nv; onChange0(nv, re); };
   const setRow = (id, patch, re) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)), re);
   const add = (manufacturer, kind) => onChange([...rows, { id: uid(), manufacturer, kind, model: '' }], true);
+  // "Otra igual": mismo modelo y montura, sin números de serie (para 2ª, 3ª antena…)
+  const clone = (r) => {
+    const i = rows.findIndex((x) => x.id === r.id);
+    const copy = { id: uid(), manufacturer: r.manufacturer, kind: r.kind, model: r.model, modelOther: r.modelOther, mount: r.mount, mountOther: r.mountOther };
+    onChange([...rows.slice(0, i + 1), copy, ...rows.slice(i + 1)], true);
+  };
+  const countBy = {};
+  const serialInput = (r, label, key, placeholder, mode) => h('div', {}, h('div', { class: 'sublabel' }, label),
+    h('input', { value: r[key] || '', disabled: ro, inputmode: mode, placeholder, autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false',
+      oninput: (e) => setRow(r.id, { [key]: e.target.value }, false) }));
   return h('div', { class: 'stack' },
     rows0.map((r) => {
       const models = catalog.filter((c) => c.kind === r.kind && (r.manufacturer === 'Other' || c.manufacturer === r.manufacturer) && (c.active || c.name === r.model));
       const mounts = r.kind === 'antenna' ? mountsFor(catalog, r.model) : [];
+      const tKey = r.kind === 'router' ? `${r.manufacturer} router` : r.kind;
+      countBy[tKey] = (countBy[tKey] || 0) + 1;
+      const title = r.kind === 'router' ? `Router ${r.manufacturer === 'Other' ? '' : r.manufacturer}` : CARD_TITLE[r.kind] || 'Equipo';
       return h('div', { class: 'card eq' },
+        h('div', { class: 'eq-head' }, h('span', {}, `${title} ${countBy[tKey]}`),
+          ro ? null : h('div', { class: 'row' },
+            ['antenna', 'router', 'sim'].includes(r.kind) ? h('button', { type: 'button', class: 'btn small', title: 'Añadir otro igual', onclick: () => clone(r) }, '＋ Otra igual') : null,
+            h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: () => onChange(rows.filter((x) => x.id !== r.id), true) }, '🗑'))),
         h('div', { class: 'grid3' },
           h('div', {}, h('div', { class: 'sublabel' }, 'Fabricante'),
             h('select', { disabled: ro, onchange: (e) => setRow(r.id, { manufacturer: e.target.value, kind: KINDS_BY_MAN[e.target.value][0], model: '' }, true) },
@@ -191,16 +213,17 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
           h('div', {}, h('div', { class: 'sublabel' }, 'Modelo'),
             optionSelect(models.map((m) => ({ v: m.name, es: m.name })), r.model, true, r.modelOther || '', ro,
               (m) => setRow(r.id, { model: m, mount: '' }, true), (o) => setRow(r.id, { modelOther: o }, false)))),
-        h('div', { class: 'grid3 mt' },
-          h('div', {}, h('div', { class: 'sublabel' }, r.kind === 'sim' ? 'ICCID' : 'Nº serie / kit'),
-            h('input', { value: r.serial || '', disabled: ro, inputmode: r.kind === 'sim' ? 'numeric' : 'text', placeholder: r.kind === 'sim' ? '8934…' : 'KIT…', autocapitalize: 'characters', oninput: (e) => setRow(r.id, { serial: e.target.value }, false) })),
-          r.kind === 'antenna'
-            ? h('div', {}, h('div', { class: 'sublabel' }, 'Montura'),
+        r.kind === 'antenna'
+          ? h('div', { class: 'grid3 mt' },
+            serialInput(r, 'Nº de serie (S/N)', 'serial', 'Ej. 2DWC…', 'text'),
+            serialInput(r, 'Nº de kit', 'kit', 'Ej. KIT4051…', 'text'),
+            h('div', {}, h('div', { class: 'sublabel' }, 'Montura'),
               optionSelect(mounts.map((m) => ({ v: m.name, es: m.name })), r.mount || '', true, r.mountOther || '', ro || !r.model,
-                (m) => setRow(r.id, { mount: m }, true), (o) => setRow(r.id, { mountOther: o }, false)))
-            : h('div', {}, h('div', { class: 'sublabel' }, 'Cantidad'),
-              h('input', { type: 'number', min: 1, value: r.qty || 1, disabled: ro, oninput: (e) => setRow(r.id, { qty: Number(e.target.value) || 1 }, false) })),
-          h('div', { class: 'end' }, ro ? null : h('button', { type: 'button', class: 'btn danger small', onclick: () => onChange(rows.filter((x) => x.id !== r.id), true) }, 'Quitar'))),
+                (m) => setRow(r.id, { mount: m }, true), (o) => setRow(r.id, { mountOther: o }, false))))
+          : h('div', { class: 'grid2 mt' },
+            r.kind === 'sim' ? serialInput(r, 'ICCID', 'serial', '8934…', 'numeric') : serialInput(r, 'Nº de serie (S/N)', 'serial', 'Ej. 1936-…', 'text'),
+            h('div', {}, h('div', { class: 'sublabel' }, 'Cantidad'),
+              h('input', { type: 'number', min: 1, inputmode: 'numeric', value: r.qty || 1, disabled: ro, oninput: (e) => setRow(r.id, { qty: Number(e.target.value) || 1 }, false) }))),
         h('input', { class: 'mt', placeholder: 'Notas (opcional)', value: r.notes || '', disabled: ro, oninput: (e) => setRow(r.id, { notes: e.target.value }, false) }));
     }),
     ro ? null : h('div', { class: 'chips' },
@@ -209,6 +232,32 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
       h('button', { type: 'button', class: 'chip add', onclick: () => add('SIM', 'sim') }, '+ SIM'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('Starlink', 'cable') }, '+ Cable'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('Starlink', 'accessory') }, '+ Accesorio')));
+}
+
+// ---------------------------------------------------------------------
+// Pruebas Starlink: un bloque por cada antena añadida en "Equipos"
+// ---------------------------------------------------------------------
+function antennaTests(ctx, ro) {
+  const antennas = (ctx.data.equipment || []).filter((e) => e.kind === 'antenna');
+  const all = { ...(ctx.data.sl_tests || {}) };
+  // Informes antiguos: los campos sueltos pasan a la primera antena
+  if (!ctx.data.sl_tests && ['sl_status', 'sl_down', 'sl_up', 'sl_latency', 'sl_obstructions', 'sl_notes'].some((k) => ctx.data[k] != null && ctx.data[k] !== '')) {
+    const key = antennas[0]?.id || '_';
+    all[key] = { status: ctx.data.sl_status, obstructions: ctx.data.sl_obstructions, down: ctx.data.sl_down, up: ctx.data.sl_up, latency: ctx.data.sl_latency, notes: ctx.data.sl_notes };
+  }
+  const blocks = antennas.length ? antennas.map((a, i) => ({ key: a.id, title: `Antena ${i + 1}`, sub: [a.model === '__other' ? a.modelOther : a.model, a.serial && `S/N ${a.serial}`, a.kit && `Kit ${a.kit}`].filter(Boolean).join(' · ') })) : [{ key: '_', title: 'Starlink', sub: 'Añade las antenas en el paso "Equipos" para tener una prueba por antena' }];
+  const set = (key, patch, re) => { all[key] = { ...(all[key] || {}), ...patch }; ctx.set('sl_tests', { ...all }, re); };
+  const sel = (key, k, opts) => h('select', { disabled: ro, onchange: (e) => set(key, { [k]: e.target.value }, false) },
+    h('option', { value: '' }, '— Elegir —'), opts.map((o) => h('option', { value: o.v, selected: (all[key] || {})[k] === o.v }, o.es)));
+  const numIn = (key, k, unit) => h('div', {}, h('div', { class: 'sublabel' }, unit),
+    h('input', { type: 'number', inputmode: 'decimal', step: 'any', value: (all[key] || {})[k] ?? '', disabled: ro, oninput: (e) => set(key, { [k]: e.target.value === '' ? '' : Number(e.target.value) }, false) }));
+  return h('div', { class: 'stack' }, blocks.map((b) => h('div', { class: 'card eq' },
+    h('div', { class: 'eq-head' }, h('span', {}, b.title), h('span', { class: 'muted small', style: { fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, b.sub)),
+    h('div', { class: 'grid2' },
+      h('div', {}, h('div', { class: 'sublabel' }, 'Estado'), sel(b.key, 'status', OPT.starlinkStatus)),
+      h('div', {}, h('div', { class: 'sublabel' }, 'Obstrucciones'), sel(b.key, 'obstructions', OPT.obstructions))),
+    h('div', { class: 'grid3 mt' }, numIn(b.key, 'down', 'Descarga (Mbps)'), numIn(b.key, 'up', 'Subida (Mbps)'), numIn(b.key, 'latency', 'Latencia (ms)')),
+    h('textarea', { class: 'mt', rows: 2, placeholder: 'Notas de esta antena (opcional)', disabled: ro, oninput: (e) => set(b.key, { notes: e.target.value }, false) }, (all[b.key] || {}).notes || ''))));
 }
 
 function segmentsEditor(rows, ro, onChange) {

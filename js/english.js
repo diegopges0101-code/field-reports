@@ -22,7 +22,17 @@ export function getTranslatables(r, photos) {
         if (f.type === 'equipment')
             v?.forEach((e) => push(`${f.key}.${e.id}.notes`, `Notas equipo ${e.model || ''}`, e.notes));
     }
-    photos.forEach((p, i) => push(`photo.${p.id}`, `Foto ${i + 1} (${p.category})`, p.caption));
+    if (r.type === 'installation') {
+        const tests = d.sl_tests ?? {};
+        Object.keys(tests).forEach((k) => {
+            const a = (d.equipment ?? []).find((e) => e.id === k);
+            if (k === '_' || a) push(`sl_tests.${k}.notes`, `Notas pruebas Starlink ${a?.serial || a?.kit || ''}`.trim(), tests[k]?.notes);
+        });
+    }
+    photos.forEach((p, i) => {
+        push(`photo.${p.id}`, `Foto ${i + 1} (${p.category})`, p.caption);
+        (p.annots ?? []).forEach((a) => push(`photo.${p.id}.a.${a.id}`, `Foto ${i + 1} – texto en la imagen`, a.text));
+    });
     return out;
 }
 /** Estado de traducción de un texto. */
@@ -102,7 +112,11 @@ export function buildDoc(ctx) {
         const model = e.model === '__other' ? (e.modelOther ?? '') : e.model;
         const qty = e.qty && e.qty > 1 ? ` (x${e.qty})` : '';
         const mount = e.mount === '__other' ? (e.mountOther ?? '').trim() : e.mount;
-        return { label: `${model}${qty}`, value: [e.serial?.trim(), mount ? `Mount: ${mount}` : ''].filter(Boolean).join(' – ') };
+        const idLabel = e.kind === 'sim' ? 'ICCID' : 'S/N';
+        return {
+            label: `${model}${qty}`,
+            value: [e.serial?.trim() ? `${idLabel} ${e.serial.trim()}` : '', e.kit?.trim() ? `Kit ${e.kit.trim()}` : '', mount ? `Mount: ${mount}` : ''].filter(Boolean).join(' · '),
+        };
     });
     const sections = [];
     const add = (title, blocks) => {
@@ -227,11 +241,12 @@ export function buildDoc(ctx) {
     }
     else {
         // ---------------- INSTALLATION ----------------
-        const eq = d.equipment ?? [];
-        const ant = eq.find((e) => e.kind === 'antenna');
-        const pep = eq.find((e) => e.manufacturer === 'Peplink' && e.kind === 'router');
-        const sim = eq.find((e) => e.kind === 'sim');
+        const eq = (d.equipment ?? []).filter((e) => e.model || e.modelOther || e.serial || e.kit);
         const modelOf = (e) => (e ? (e.model === '__other' ? e.modelOther ?? '' : e.model) : '');
+        const mountOf = (e) => (e?.mount === '__other' ? (e.mountOther ?? '').trim() : e?.mount ?? '');
+        const antennas = eq.filter((e) => e.kind === 'antenna');
+        const routers = eq.filter((e) => e.manufacturer === 'Peplink' && e.kind === 'router');
+        const sims = eq.filter((e) => e.kind === 'sim');
         network = [
             ['Starlink mode', sel('starlink_mode')],
             ['IP type', sel('ip_type')],
@@ -243,12 +258,18 @@ export function buildDoc(ctx) {
         const connections = chips('connections');
         const power = chips('power');
         const surface = sel('mount_surface');
-        add('Installation Steps', []);
-        add('2.1 Antenna Mounting', [
-            KV([['Antenna', modelOf(ant)], ['Mount', ant?.mount === '__other' ? ant?.mountOther ?? '' : ant?.mount ?? ''], ['Surface', surface]]),
-            P(txt('mount_notes')),
-        ]);
-        add('2.2 Cable Routing', [
+        const ids = (e) => [e.serial?.trim() ? `S/N ${e.serial.trim()}` : '', e.kit?.trim() ? `Kit ${e.kit.trim()}` : ''].filter(Boolean).join(' · ');
+        const multiAnt = antennas.length > 1;
+        // --- 2. Instalación (numeración automática más abajo)
+        const mountingBlocks = [];
+        antennas.forEach((a, i) => {
+            mountingBlocks.push(multiAnt ? P(`Starlink antenna ${i + 1}`, true) : null);
+            mountingBlocks.push(KV([['Antenna', modelOf(a)], ['Serial / Kit', ids(a)], ['Mount', mountOf(a)]]));
+            const n = tx(`equipment.${a.id}.notes`, a.notes, 'Notas antena');
+            if (n) mountingBlocks.push(P(n));
+        });
+        add('@2|Antenna Mounting', [...mountingBlocks, KV([['Surface', surface]]), P(txt('mount_notes'))]);
+        add('@2|Cable Routing', [
             KV([
                 ['Building entry', sel('cable_entry')],
                 ['Cable protection', chips('cable_protection').join(', ')],
@@ -256,56 +277,71 @@ export function buildDoc(ctx) {
             ]),
             P(txt('cable_notes')),
         ]);
-        add('2.3 Rack Installation', [
+        add('@2|Rack Installation', [
             KV([['Rack location', txt('rack_location')]]),
             P(connections.length ? 'Connections made:' : '', true),
             B(connections),
             P(power.length ? `Power supplied via: ${power.join(', ')}.` : ''),
             P(txt('rack_notes')),
         ]);
-        const slLines = [];
+        // --- 3. Verificación: una sección por antena con sus propias pruebas
         const mode = sel('starlink_mode');
-        if (mode)
-            slLines.push(`${mode} configured${sel('ip_type') ? ` (${sel('ip_type')})` : ''}.`);
-        if (sel('sl_status'))
-            slLines.push(`Status: ${sel('sl_status')}.`);
-        if (nv('sl_down', 'Mbps'))
-            slLines.push(`Download speed: ${nv('sl_down', 'Mbps')}`);
-        if (nv('sl_up', 'Mbps'))
-            slLines.push(`Upload speed: ${nv('sl_up', 'Mbps')}`);
-        if (nv('sl_latency', 'ms'))
-            slLines.push(`Latency: ${nv('sl_latency', 'ms')}`);
-        if (sel('sl_obstructions'))
-            slLines.push(`Obstructions: ${sel('sl_obstructions')}.`);
-        add(`3.1 Starlink ${ant?.serial?.trim() || ''}`.trim(), [
-            ...slLines.map((l) => P(l)),
-            P(txt('sl_notes')),
-        ]);
+        const tests = d.sl_tests ?? {};
+        const legacy = { status: d.sl_status, obstructions: d.sl_obstructions, down: d.sl_down, up: d.sl_up, latency: d.sl_latency, notes: d.sl_notes };
+        const testOf = (a, i) => {
+            const t = (a && tests[a.id]) || (i === 0 ? (tests._ ?? legacy) : {});
+            return t || {};
+        };
+        const antList = antennas.length ? antennas : [null];
+        antList.forEach((a, i) => {
+            const t = testOf(a, i);
+            const lines = [];
+            if (mode) lines.push(`${mode} configured${sel('ip_type') ? ` (${sel('ip_type')})` : ''}.`);
+            if (t.status) lines.push(`Status: ${t.status}.`);
+            if (num(t.down) != null) lines.push(`Download speed: ${num(t.down)} Mbps`);
+            if (num(t.up) != null) lines.push(`Upload speed: ${num(t.up)} Mbps`);
+            if (num(t.latency) != null) lines.push(`Latency: ${num(t.latency)} ms`);
+            if (t.obstructions) lines.push(`Obstructions: ${t.obstructions}.`);
+            const notesKey = a ? `sl_tests.${a.id}.notes` : (tests._ ? 'sl_tests._.notes' : 'sl_notes');
+            const label = a ? [multiAnt ? `${i + 1}` : '', a.serial?.trim() || a.kit?.trim() || ''].filter(Boolean).join(' – ') : '';
+            add(`@3|Starlink${label ? ' ' + label : ''}`, [...lines.map((l) => P(l)), P(tx(notesKey, t.notes, 'Notas pruebas Starlink'))]);
+        });
         const wan = sel('wan_port');
         const wanLine = wan ? `${wan} configured${sel('ip_type') ? ` via ${sel('ip_type')}` : ''}${sel('wan_priority') ? `, ${sel('wan_priority')}` : ''}.` : '';
         const cell = sel('cellular');
-        const cellLine = cell && cell !== 'Not used' ? `Cellular ${cell}${sim ? `: ${modelOf(sim)} installed` : ''}.` : '';
-        const tests = chips('pp_tests');
-        add(`3.2 Peplink Router ${pep?.serial?.trim() || modelOf(pep)}`.trim(), [
+        const cellLine = cell && cell !== 'Not used' ? `Cellular ${cell}${sims.length ? `: ${sims.map(modelOf).join(', ')} installed` : ''}.` : '';
+        const ppTests = chips('pp_tests');
+        const rTitle = routers.length === 1 ? `Peplink Router ${routers[0].serial?.trim() || modelOf(routers[0])}` : 'Peplink Router';
+        add(`@3|${rTitle}`, [
+            routers.length > 1 ? KV(routers.map((r, i) => [`Router ${i + 1}`, [modelOf(r), r.serial?.trim()].filter(Boolean).join(' – ')])) : null,
             P(wanLine),
             P(cellLine),
-            P(tests.length ? 'Tests completed successfully:' : '', true),
-            B(tests),
+            P(ppTests.length ? 'Tests completed successfully:' : '', true),
+            B(ppTests),
             P(txt('pp_notes')),
             P(txt('network_notes')),
         ]);
         result = sel('final_status');
-        add('4. Result', [
+        add('@4|Result', [
             KV([['Final status', result]]),
             P(txt('pending') ? `Pending tasks: ${txt('pending')}` : ''),
             P(txt('issues') ? `Issues: ${txt('issues')}` : ''),
             P(txt('recommendations') ? `Recommendations: ${txt('recommendations')}` : ''),
             P(txt('final_notes')),
         ]);
-        // Quita la cabecera vacía "Installation Steps" (solo era un separador)
-        const i = sections.findIndex((s) => s.title === 'Installation Steps');
-        if (i >= 0)
-            sections.splice(i, 1);
+        // Numeración automática solo de lo que tiene contenido: 2.1, 2.2… 3.1, 3.2… 4.
+        const counters = {};
+        const groupNo = {};
+        let nextGroup = 2;
+        sections.forEach((s) => {
+            const m = s.title.match(/^@(\d)\|(.*)$/);
+            if (!m) return;
+            const g = m[1];
+            if (!groupNo[g]) groupNo[g] = nextGroup++;
+            counters[g] = (counters[g] || 0) + 1;
+            s.group = g;
+            s.title = g === '4' ? `${groupNo[g]}. ${m[2]}` : `${groupNo[g]}.${counters[g]} ${m[2]}`;
+        });
     }
     // Numeración automática de secciones del survey (1., 2., …)
     if (isSurvey)
@@ -313,7 +349,12 @@ export function buildDoc(ctx) {
     const groups = new Map();
     [...photos].sort((a, b) => a.sort - b.sort).forEach((p) => {
         const g = groups.get(p.category) ?? [];
-        g.push({ id: p.id, caption: tx(`photo.${p.id}`, p.caption, 'pie de foto'), path: p.path });
+        const legend = (p.annots ?? []).filter((a) => a.type === 'number' && a.text?.trim())
+            .map((a) => `${a.n}: ${tx(`photo.${p.id}.a.${a.id}`, a.text, 'texto en foto')}`).join('; ');
+        // los textos dibujados en la foto (líneas, texto) también deben estar traducidos
+        (p.annots ?? []).filter((a) => a.type !== 'number' && a.text?.trim()).forEach((a) => tx(`photo.${p.id}.a.${a.id}`, a.text, 'texto en foto'));
+        const caption = [tx(`photo.${p.id}`, p.caption, 'pie de foto'), legend].filter(Boolean).join(' — ');
+        g.push({ id: p.id, caption, path: p.path });
         groups.set(p.category, g);
     });
     const title = t.title;
@@ -429,17 +470,22 @@ export function whatsappText(m) {
             L.push('*Equipment*');
             m.equipment.forEach((e) => L.push(`• ${e.label}${e.value ? ` – ${e.value}` : ''}`));
         }
-        const tests = m.sections.filter((s) => s.title.startsWith('3.'));
+        const tests = m.sections.filter((s) => s.group === '3');
         if (tests.length) {
             L.push('', '*Tests*');
-            tests.forEach((s) => s.blocks.forEach((b) => {
-                if (b.type === 'p' && !b.bold)
-                    L.push(`• ${b.text}`);
-                if (b.type === 'bullets')
-                    b.items.forEach((i) => L.push(`• ${i}`));
-            }));
+            tests.forEach((s) => {
+                L.push(`_${s.title.replace(/^[\d.]+\s*/, '')}_`);
+                s.blocks.forEach((b) => {
+                    if (b.type === 'p' && !b.bold)
+                        L.push(`• ${b.text}`);
+                    if (b.type === 'bullets')
+                        b.items.forEach((i) => L.push(`• ${i}`));
+                    if (b.type === 'kv')
+                        b.rows.forEach(([k, v]) => L.push(`• ${k}: ${v}`));
+                });
+            });
         }
-        const res = m.sections.find((s) => s.title.startsWith('4.'));
+        const res = m.sections.find((s) => s.group === '4');
         res?.blocks.forEach((b) => { if (b.type === 'p')
             L.push(b.text); });
     }

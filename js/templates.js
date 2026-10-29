@@ -301,12 +301,7 @@ export const INSTALLATION = {
       id: 'tests',
       title: 'Pruebas',
       fields: [
-        { key: 'sl_status', type: 'select', label: 'Estado Starlink', options: OPT.starlinkStatus, half: true },
-        { key: 'sl_obstructions', type: 'select', label: 'Obstrucciones', options: OPT.obstructions, half: true },
-        { key: 'sl_down', type: 'number', label: 'Descarga', unit: 'Mbps', half: true },
-        { key: 'sl_up', type: 'number', label: 'Subida', unit: 'Mbps', half: true },
-        { key: 'sl_latency', type: 'number', label: 'Latencia', unit: 'ms', half: true },
-        { key: 'sl_notes', type: 'textarea', label: 'Notas Starlink', translatable: true },
+        { key: 'sl_tests', type: 'antennaTests', label: 'Pruebas Starlink (una por antena)' },
         { key: 'pp_tests', type: 'chips', label: 'Pruebas Peplink realizadas (marca SOLO lo comprobado)', options: OPT.peplinkTests, allowOther: true },
         { key: 'pp_notes', type: 'textarea', label: 'Notas Peplink', translatable: true },
       ],
