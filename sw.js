@@ -1,6 +1,6 @@
 // Service worker: guarda la app en el dispositivo para que abra sin cobertura.
 // Sube este número cada vez que publiques cambios para forzar la actualización.
-const CACHE = 'field-reports-v2.0.0';
+const CACHE = 'field-reports-v2.0.1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'vendor/pdf-lib.min.js',
   'js/app.js', 'js/api.js', 'js/config.js', 'js/db.js', 'js/english.js', 'js/fields.js', 'js/pdf.js',
