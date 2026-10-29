@@ -46,7 +46,7 @@ function loginView() {
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); err.hidden = true; btn.disabled = true; btn.textContent = 'Entrando…';
     try {
-      const r = await api('login', { username: user.value, password: pw.value });
+      const r = await api('login', { username: user.value, password: pw.value }, { timeout: 120000 });
       setToken(r.token);
       if (r.mustChange) return render(changePasswordView(pw.value));
       await start();
@@ -70,15 +70,21 @@ function changePasswordView(oldPw = '') {
     e.preventDefault(); err.hidden = true;
     if (n1.value !== n2.value) { err.textContent = 'Las contraseñas no coinciden'; err.hidden = false; return; }
     try {
-      const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value });
+      const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value }, { timeout: 120000 });
       setToken(r.token); toast('Contraseña cambiada'); await start();
-    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+    } catch (ex) {
+      err.textContent = ex.code === 'offline'
+        ? 'El servidor no respondió a tiempo. Puede que el cambio SÍ se haya guardado: pulsa "Salir" y entra con la contraseña NUEVA; si no funciona, con la antigua.'
+        : ex.message;
+      err.hidden = false;
+    }
   } },
   h('h2', {}, 'Elige tu contraseña'), h('p', { class: 'muted' }, 'Es obligatorio cambiar la contraseña provisional (mínimo 8 caracteres).'),
   h('label', { class: 'label' }, 'Contraseña actual'), old,
   h('label', { class: 'label mt' }, 'Nueva contraseña'), n1,
   h('label', { class: 'label mt' }, 'Repite la nueva contraseña'), n2, err,
-  h('button', { class: 'btn primary full-w mt' }, 'Guardar')));
+  h('button', { class: 'btn primary full-w mt' }, 'Guardar'),
+  h('button', { type: 'button', class: 'btn full-w mt', onclick: () => { setToken(''); render(loginView()); } }, 'Salir y volver a entrar')));
 }
 
 async function logout() {
