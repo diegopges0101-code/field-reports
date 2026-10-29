@@ -1,7 +1,7 @@
 import { h, toast, modal, fmtDateTime } from '../ui.js';
 import { api } from '../api.js';
 import { idb } from '../db.js';
-import { state, loadReport, saveLocal, resolveConflict, sync, listPhotos } from '../store.js';
+import { state, loadReport, saveLocal, resolveConflict, sync, listPhotos, ensurePhotoData } from '../store.js';
 import { TEMPLATES, missingRequired } from '../templates.js';
 import { renderField } from '../fields.js';
 import { getTranslatables, trState } from '../english.js';
@@ -22,8 +22,17 @@ export async function editorView(page, id, stepIdx) {
   stepIdx = Math.min(stepIdx, tpl.steps.length - 1);
   const readOnly = !canEdit(r);
 
-  const saveEl = h('div', { class: 'save' });
-  const headTitle = h('h2', {}, `${TYPE_LABEL[r.type]} · ${r.number || 'nº pendiente'}`);
+  const saveTxt = h('span', {});
+  const saveEl = h('div', { class: 'save', title: '' }, saveTxt);
+  const headTitle = h('div', { class: 't1' });
+  const headSub = h('div', { class: 't2' });
+  const drawTitles = () => {
+    const site = [r.data.site_code, r.data.site_name].filter(Boolean).join(' – ');
+    headTitle.textContent = site || TYPE_LABEL[r.type];
+    headSub.innerHTML = '';
+    headSub.append(...[h('span', { class: `badge st-${r.status}` }, STATUS_LABEL[r.status]), h('span', {}, `${r.type === 'survey' ? 'Survey' : 'Installation'} · ${r.number || 'nº pendiente'}`),
+      r.isNew ? null : h('a', { href: '#', onclick: (e) => { e.preventDefault(); showHistory(r); } }, 'Historial')].filter(Boolean));
+  };
   const banner = h('div', {});
   const stepsNav = h('nav', { class: 'steps' });
   const body = h('section', { class: 'card' });
@@ -31,11 +40,12 @@ export async function editorView(page, id, stepIdx) {
   async function refreshSaveState() {
     const cur = (await idb.get('reports', r.id)) || r;
     r.version = cur.version; r.number = cur.number || r.number; r.status = cur.status || r.status; r.dirty = cur.dirty; r.conflict = cur.conflict; r.isNew = cur.isNew;
-    headTitle.textContent = `${TYPE_LABEL[r.type]} · ${r.number || 'nº pendiente'}`;
-    if (r.conflict) { saveEl.className = 'save save-bad'; saveEl.textContent = '⚠ Conflicto'; }
-    else if (!r.dirty) { saveEl.className = 'save save-ok'; saveEl.textContent = '✓ Guardado en la nube'; }
-    else if (!navigator.onLine) { saveEl.className = 'save save-bad'; saveEl.textContent = 'Sin conexión · guardado en este dispositivo'; }
-    else { saveEl.className = 'save save-warn'; saveEl.textContent = state.syncing ? '↻ Guardando…' : '● Cambios pendientes de subir'; }
+    drawTitles();
+    const set = (cls, txt, title) => { saveEl.className = `save ${cls}`; saveTxt.textContent = txt; saveEl.title = title; };
+    if (r.conflict) set('save-bad', 'Conflicto', 'Otra persona guardó cambios');
+    else if (!r.dirty) set('save-ok', 'Guardado', 'Guardado en la nube');
+    else if (!navigator.onLine) set('save-bad', 'Sin red · en el móvil', 'Sin conexión: guardado en este dispositivo, se subirá solo');
+    else set('save-warn', state.syncing ? 'Guardando…' : 'Por subir', 'Cambios pendientes de subir');
     drawBanner();
   }
   function drawBanner() {
@@ -49,12 +59,26 @@ export async function editorView(page, id, stepIdx) {
     if (readOnly) banner.appendChild(h('div', { class: 'info-box' }, `Estado "${STATUS_LABEL[r.status]}": solo lectura.`));
   }
   const onSync = () => refreshSaveState();
+  const typing = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.querySelector('.pe, .modal-back');
+  // La versión del servidor llegó en segundo plano y es más nueva: se actualiza la pantalla
+  const onRefreshed = async (e) => {
+    if (e.detail?.id !== r.id) return;
+    const cur = await idb.get('reports', r.id);
+    if (!cur || cur.dirty) return;
+    r = cur;
+    if (!typing()) { drawStep(); toast('Informe actualizado con la última versión'); }
+    refreshSaveState();
+  };
+  const onPhotos = (e) => { if (e.detail?.reportId === r.id && !typing() && tpl.steps[stepIdx].fields.some((f) => f.type === 'photos')) drawStep(); };
   window.addEventListener('report-state', onSync);
   window.addEventListener('sync', onSync);
   window.addEventListener('online', onSync); window.addEventListener('offline', onSync);
+  window.addEventListener('report-refreshed', onRefreshed);
+  window.addEventListener('photos-refreshed', onPhotos);
   window.addEventListener('hashchange', function off() {
     window.removeEventListener('report-state', onSync); window.removeEventListener('sync', onSync);
     window.removeEventListener('online', onSync); window.removeEventListener('offline', onSync);
+    window.removeEventListener('report-refreshed', onRefreshed); window.removeEventListener('photos-refreshed', onPhotos);
     window.removeEventListener('hashchange', off);
   });
 
@@ -66,7 +90,7 @@ export async function editorView(page, id, stepIdx) {
       if (rerender) drawStep();
       else markSteps();
     },
-    people: state.people, catalog: state.catalog, readOnly, report: r,
+    people: state.people, catalog: state.catalog, readOnly, get report() { return r; },
   };
 
   function markSteps() {
@@ -85,6 +109,12 @@ export async function editorView(page, id, stepIdx) {
     stepsNav.innerHTML = '';
     tpl.steps.forEach((s, i) => stepsNav.appendChild(h('button', { class: `step ${i === stepIdx ? 'on' : ''}`, onclick: () => goStep(i) }, h('span', { class: 'n' }, i + 1), ' ', s.title)));
     markSteps();
+    count.textContent = `${stepIdx + 1}/${tpl.steps.length}`;
+    prevBtn.disabled = stepIdx === 0;
+    nextBtn.textContent = stepIdx >= tpl.steps.length - 1 ? 'Fin' : 'Siguiente →';
+    nextBtn.disabled = stepIdx >= tpl.steps.length - 1;
+    const on = stepsNav.children[stepIdx];
+    requestAnimationFrame(() => { stepsNav.scrollLeft = on.offsetLeft - (stepsNav.clientWidth - on.offsetWidth) / 2; });
     const y = window.scrollY;
     body.innerHTML = '';
     body.appendChild(h('h3', {}, step.title));
@@ -94,19 +124,20 @@ export async function editorView(page, id, stepIdx) {
     window.scrollTo(0, y);
   }
 
-  const histBtn = h('button', { class: 'btn small', onclick: () => showHistory(r) }, 'Historial');
+  const count = h('span', { class: 'count' });
+  const prevBtn = h('button', { class: 'btn', onclick: () => stepIdx > 0 && goStep(stepIdx - 1) }, '← Anterior');
+  const nextBtn = h('button', { class: 'btn primary', onclick: () => stepIdx < tpl.steps.length - 1 && goStep(stepIdx + 1) }, 'Siguiente →');
   page.append(
     h('div', { class: 'editor-head' },
-      h('div', {}, h('a', { href: '#/', class: 'muted' }, '← Informes'), headTitle,
-        h('div', { class: 'muted' }, h('span', { class: `badge st-${r.status}` }, STATUS_LABEL[r.status]), ' ', r.isNew ? '' : histBtn)),
+      h('a', { href: '#/', class: 'btn icon back', 'aria-label': 'Volver a informes' }, '←'),
+      h('div', { class: 'titles' }, headTitle, headSub),
       saveEl),
     banner, stepsNav, body,
-    h('div', { class: 'bottom-bar' },
-      h('button', { class: 'btn', onclick: () => stepIdx > 0 && goStep(stepIdx - 1) }, '← Anterior'),
-      h('span', { class: 'muted small', id: 'step-count' }, ''),
-      h('button', { class: 'btn primary', onclick: () => stepIdx < tpl.steps.length - 1 && goStep(stepIdx + 1) }, 'Siguiente →')));
+    h('div', { class: 'bottom-bar' }, prevBtn, count, nextBtn));
   drawStep();
   refreshSaveState();
+  // Descarga las fotos en segundo plano para que el paso "Fotos" y el PDF salgan al instante
+  if (navigator.onLine && !r.isNew) setTimeout(() => listPhotos(r.id, { cachedFirst: true }).then((ph) => ensurePhotoData(ph)).catch(() => {}), 800);
 }
 
 // ---------------------------------------------------------------------
@@ -148,7 +179,7 @@ function englishStep(r, readOnly) {
     } catch (e) { toast('Error al traducir: ' + e.message); }
     draw();
   };
-  listPhotos(r.id).then((ph) => { items = getTranslatables(r, ph); draw(); });
+  listPhotos(r.id, { cachedFirst: true }).then((ph) => { items = getTranslatables(r, ph); draw(); });
   return box;
 }
 
