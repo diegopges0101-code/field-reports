@@ -12,11 +12,16 @@ const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { deta
 // ---------------------------------------------------------------------
 const applyBoot = (b) => Object.assign(state, { user: b.user, people: b.people, catalog: b.catalog, config: b.config, logo: b.logo });
 
+/** Guarda los datos que llegan junto con el login (así no hace falta otra petición). */
+export async function applyBootData(b) { applyBoot(b); await kv.set('boot', b); bootFresh = Date.now(); }
+let bootFresh = 0;
+
 /** Arranque. Con copia guardada abre al instante y actualiza en segundo plano. */
 export async function bootstrap({ cachedFirst = false } = {}) {
   const cached = await kv.get('boot');
   if (cachedFirst && cached && getToken()) {
     applyBoot(cached);
+    if (Date.now() - bootFresh < 60000) return true; // recién recibido con el login
     api('bootstrap').then(async (b) => { applyBoot(b); await kv.set('boot', b); emit('boot-refreshed'); }).catch((e) => {
       if (e.code === 'auth' || e.code === 'must_change') return; // api.js ya avisa a la app
     });

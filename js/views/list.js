@@ -14,6 +14,12 @@ const NOT_COPIED = ['site_code', 'site_name', 'contract', 'gps', 'client_contact
 
 const filters = { q: '', type: '', status: '', mine: false };
 
+/** Parámetros de la lista inicial (los mismos que pide el login, para aprovechar su respuesta). */
+export function defaultList(user) {
+  const params = { q: '', type: '', status: '', mine: user.role === 'technician' ? true : false, limit: 80 };
+  return { params, key: 'list:' + JSON.stringify(params) };
+}
+
 export async function listView(page) {
   const manager = state.user.role !== 'technician';
   const listBox = h('div', { class: 'list' }, [1, 2, 3, 4].map(() => h('div', { class: 'skel skel-row' })));
@@ -42,14 +48,16 @@ export async function listView(page) {
     const params = { ...filters, mine: manager ? filters.mine : true, limit: 80 };
     const key = 'list:' + JSON.stringify(params);
     // 1) Al instante: la última lista conocida
-    const cached = await kv.get(key);
+    const c = await kv.get(key);
+    const cached = Array.isArray(c) ? c : c?.rows;
     if (cached) await paint(cached, false);
+    if (c?.at && Date.now() - c.at < 30000) return; // recién descargada (p. ej. con el login)
     // 2) En segundo plano: la lista del servidor
     bar.hidden = false;
     try {
       const rows = await api('listReports', params);
       if (my !== seq) return;
-      await kv.set(key, rows);
+      await kv.set(key, { rows, at: Date.now() });
       await paint(rows, false);
     } catch (e) {
       if (my !== seq) return;

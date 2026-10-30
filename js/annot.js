@@ -1,7 +1,8 @@
 // =====================================================================
-//  Editor de fotos por objetos: línea con punto y descripción, flecha,
-//  línea, círculo, cuadrado, número y texto. Todo se puede seleccionar,
-//  mover, redimensionar, cambiar de color/tamaño, editar el texto y borrar.
+//  Editor de fotos por objetos: línea con punto y descripción, recorrido de
+//  cable por puntos (con medidas por tramo), flecha, línea, círculo, cuadrado,
+//  número y texto. Cada herramienta queda activa para encadenar marcas; solo
+//  "Mover" selecciona, mueve y ajusta. Lupa, imán a otras líneas y enderezado.
 //  Las marcas se guardan aparte (coordenadas 0–1), la foto original no se toca.
 // =====================================================================
 import { h, uid } from './ui.js';
@@ -10,7 +11,7 @@ export const COLORS = ['#e53935', '#fdd835', '#ffffff', '#1e88e5', '#43a047', '#
 const STROKE = [0.45, 0.7, 1.05];
 const FONT = [2.5, 3.3, 4.3];
 const NUM_R = [2.3, 3.0, 3.8];
-const TEXT_TYPES = ['callout', 'text', 'number', 'circle', 'rect'];
+const TEXT_TYPES = ['callout', 'text', 'number', 'circle', 'rect', 'route'];
 
 const isLight = (hex) => {
   const n = parseInt(hex.slice(1), 16);
@@ -92,6 +93,34 @@ export function drawAnnots(ctx, W, H, annots, opts = {}) {
       case 'line':
         stroke(() => { ctx.moveTo(X1, Y1); ctx.lineTo(X2, Y2); });
         break;
+      case 'route': {
+        const P = (a.pts || []).map(([x, y]) => [x * W, y * H]);
+        if (!P.length) break;
+        ctx.setLineDash(a.dashed ? [lw * 2.6, lw * 2] : []);
+        stroke(() => { ctx.moveTo(P[0][0], P[0][1]); P.slice(1).forEach(([x, y]) => ctx.lineTo(x, y)); });
+        ctx.setLineDash([]);
+        const dr = lw * 1.2 + u * 0.3;
+        [P[0]].forEach(([x, y]) => { ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(x, y, dr + u * 0.25, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI * 2); ctx.fill(); });
+        // medidas por tramo: "20, 15, 5" → 20 m, 15 m, 5 m en el centro de cada tramo
+        const L = String(a.lengths || '').split(/[,;]/).map((v) => v.trim());
+        const fs = FONT[s] * u * 0.8;
+        for (let i = 0; i < P.length - 1; i++) {
+          const v = L[i]; if (!v) continue;
+          const txt = /^[\d.,]+$/.test(v) ? `${v} m` : v;
+          const mx = (P[i][0] + P[i + 1][0]) / 2, my = (P[i][1] + P[i + 1][1]) / 2;
+          ctx.font = `700 ${fs}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+          const tw = ctx.measureText(txt).width + fs * 0.7, th = fs * 1.35;
+          const ang = Math.atan2(P[i + 1][1] - P[i][1], P[i + 1][0] - P[i][0]);
+          const off = th * 0.9; // desplazado a un lado del tramo
+          const bx = mx - Math.sin(ang) * off - tw / 2, by = my + Math.cos(ang) * off * (Math.cos(ang) >= 0 ? -1 : 1) - th / 2;
+          ctx.fillStyle = '#fff'; ctx.strokeStyle = col; ctx.lineWidth = u * 0.3;
+          ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, tw, th, th * 0.2); else ctx.rect(bx, by, tw, th); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, bx + tw / 2, by + th / 2 + fs * 0.03);
+        }
+        const [ex, ey] = P[P.length - 1], [px, py] = P.length > 1 ? P[P.length - 2] : [ex - 1, ey];
+        box = label(text, ex + (ex >= px ? u * 0.6 : -u * 0.6), ey, ex >= px ? 'left' : 'right');
+        break;
+      }
       case 'circle': {
         const cx = (X1 + X2) / 2, cy = (Y1 + Y2) / 2, rx = Math.abs(X2 - X1) / 2, ry = Math.abs(Y2 - Y1) / 2;
         stroke(() => ctx.ellipse(cx, cy, Math.max(rx, 1), Math.max(ry, 1), 0, 0, Math.PI * 2));
@@ -149,42 +178,64 @@ export async function thumbFor(p) {
 //  EDITOR A PANTALLA COMPLETA
 // =====================================================================
 const TOOLS = [
-  ['select', '✋', 'Mover'], ['callout', '⟋•', 'Línea+texto'], ['arrow', '➜', 'Flecha'], ['line', '╱', 'Línea'],
-  ['circle', '◯', 'Círculo'], ['rect', '▢', 'Cuadrado'], ['number', '①', 'Número'], ['text', 'T', 'Texto'],
+  ['callout', '⟋•', 'Línea+texto'], ['route', '⤷', 'Recorrido'], ['arrow', '➜', 'Flecha'], ['line', '╱', 'Línea'],
+  ['rect', '▢', 'Cuadrado'], ['circle', '◯', 'Círculo'], ['number', '①', 'Número'], ['text', 'T', 'Texto'],
+  ['select', '✋', 'Mover'],
 ];
-const PLACEHOLDER = { callout: 'Descripción de la línea', text: 'Texto', number: 'Qué señala este número', circle: 'Etiqueta (opcional)', rect: 'Etiqueta (opcional)' };
+const HINT = {
+  callout: 'Pon el dedo en el punto exacto y arrastra hasta donde irá el texto. Después escribe la descripción.',
+  route: 'Toca punto a punto el recorrido del cable (puedes arrastrar antes de soltar para afinar). Pulsa «Terminar» al acabar.',
+  arrow: 'Arrastra desde el inicio hasta la punta de la flecha.',
+  line: 'Arrastra de un extremo al otro. Se pega a otras líneas y se endereza sola.',
+  rect: 'Arrastra en diagonal para dibujar el cuadrado.',
+  circle: 'Arrastra en diagonal para dibujar el círculo.',
+  number: 'Toca donde quieras el número y escribe qué señala.',
+  text: 'Toca donde quieras el texto y escríbelo.',
+  select: 'Toca una marca para moverla, cambiarla o borrarla. Arrastra los puntos blancos para ajustarla.',
+};
+const PLACEHOLDER = { callout: 'Descripción (ej. Antena Starlink)', text: 'Texto', number: 'Qué señala este número', circle: 'Etiqueta (opcional)', rect: 'Etiqueta (opcional)', route: 'Texto al final (ej. Infra Veolia)' };
+const LINEISH = ['callout', 'arrow', 'line'];
+const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem('pe-' + k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem('pe-' + k, JSON.stringify(v)); } catch { /* */ } } };
 
 export function openPhotoEditor(photo, { caption = '', onSave }) {
   let annots = JSON.parse(JSON.stringify(photo.annots || []));
-  let tool = 'select';
-  let selId = null;
-  let color = COLORS[0];
-  let size = 2;
-  const undo = [];
+  let tool = store.get('tool', 'callout');
+  if (!TOOLS.some((t) => t[0] === tool)) tool = 'callout';
+  let color = store.get('color', COLORS[0]);
+  let size = store.get('size', 2);
+  let selId = null;          // marca activa (para escribir su texto o editarla con "Mover")
+  let draft = null;          // recorrido que se está dibujando
+  const undo = [], redo = [];
   let boxes = new Map();
   let img;
   let dirty = false;
+  const touchUI = matchMedia('(pointer: coarse)').matches;
 
   const canvas = h('canvas', {});
   const ctx = canvas.getContext('2d');
-  const stage = h('div', { class: 'pe-stage' }, canvas);
+  const loupe = h('canvas', { class: 'pe-loupe', hidden: true });
+  const lctx = loupe.getContext('2d');
+  const zoomBox = h('div', { class: 'pe-zoom' });
+  const stage = h('div', { class: 'pe-stage' }, canvas, zoomBox);
+  const hint = h('div', { class: 'pe-hint' });
   const props = h('div', { class: 'pe-props' });
   const tools = h('div', { class: 'pe-tools' });
   const capInput = h('input', { value: caption, placeholder: 'Pie de foto (opcional)', style: { flex: 1 } });
   const root = h('div', { class: 'pe' },
     h('div', { class: 'pe-top' },
       h('button', { onclick: () => close(false) }, 'Cancelar'),
-      h('strong', { style: { flex: 1, textAlign: 'center' } }, 'Editar foto'),
+      h('div', { class: 'row', style: { flex: 1, justifyContent: 'center' } },
+        h('button', { 'aria-label': 'Deshacer', title: 'Deshacer (Ctrl+Z)', onclick: () => doUndo() }, '↶ Deshacer'),
+        h('button', { 'aria-label': 'Rehacer', title: 'Rehacer (Ctrl+Y)', onclick: () => doRedo() }, '↷')),
       h('button', { class: 'primary', onclick: () => close(true) }, 'Guardar')),
-    stage, props, tools,
-    h('div', { class: 'pe-props pe-cap' }, capInput));
+    hint, stage, props, tools,
+    h('div', { class: 'pe-props pe-cap' }, capInput), loupe);
   document.body.appendChild(root);
   document.body.style.overflow = 'hidden';
 
-  // Botones fiables con el dedo: se activan al levantar el dedo (tras arrastrar sobre la foto,
-  // algunos móviles no envían el "click" del siguiente toque). El click nativo duplicado se ignora.
+  // Botones fiables con el dedo (se activan al levantar el dedo; se ignora el click duplicado)
   let down = null;
-  root.addEventListener('pointerdown', (e) => { const b = e.target.closest('button'); down = b && !stage.contains(b) ? { b, x: e.clientX, y: e.clientY } : null; }, true);
+  root.addEventListener('pointerdown', (e) => { const b = e.target.closest('button'); down = b && !stage.contains(b) ? { b, x: e.clientX, y: e.clientY } : (b ? { b, x: e.clientX, y: e.clientY } : null); }, true);
   root.addEventListener('pointerup', (e) => {
     const b = e.target.closest('button');
     if (!down || b !== down.b || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 12 || b.disabled) { down = null; return; }
@@ -196,124 +247,226 @@ export function openPhotoEditor(photo, { caption = '', onSave }) {
   }, true);
 
   const sel = () => annots.find((a) => a.id === selId);
-  const snapshot = () => { undo.push(JSON.stringify(annots)); if (undo.length > 60) undo.shift(); dirty = true; };
+  const snapshot = () => { undo.push(JSON.stringify(annots)); if (undo.length > 80) undo.shift(); redo.length = 0; dirty = true; };
+  const W = () => canvas.width, H = () => canvas.height;
 
-  // ---------- tamaño del lienzo ----------
+  // ---------- vista (zoom y desplazamiento) ----------
   let view = { s: 1, tx: 0, ty: 0 };
   function fit() {
     if (!img) return;
     const r = stage.getBoundingClientRect();
     const k = Math.min(r.width / canvas.width, r.height / canvas.height);
-    canvas.style.width = `${canvas.width * k}px`;
-    canvas.style.height = `${canvas.height * k}px`;
+    canvas.style.width = `${canvas.width * k}px`; canvas.style.height = `${canvas.height * k}px`;
     applyView();
   }
   function applyView() {
+    if (view.s <= 1.001) view = { s: 1, tx: 0, ty: 0 };
     canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
-    zoomBtn.hidden = view.s === 1;
+    drawZoom();
+  }
+  function zoomAt(px, py, ns) {
+    ns = Math.max(1, Math.min(8, ns));
+    const sr = stage.getBoundingClientRect();
+    const bx = sr.left + canvas.offsetLeft, by = sr.top + canvas.offsetTop;
+    const cx = (px - bx - view.tx) / view.s, cy = (py - by - view.ty) / view.s;
+    view = { s: ns, tx: px - bx - ns * cx, ty: py - by - ns * cy };
+    applyView();
+  }
+  const zoomCenter = (f) => { const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, view.s * f); };
+  function drawZoom() {
+    zoomBox.innerHTML = '';
+    zoomBox.append(...[
+      h('button', { 'aria-label': 'Alejar', onclick: () => zoomCenter(1 / 1.6), disabled: view.s <= 1 }, '−'),
+      h('button', { 'aria-label': 'Acercar', onclick: () => zoomCenter(1.6) }, '+'),
+      view.s > 1 ? h('button', { 'aria-label': 'Ver toda la foto', onclick: () => { view = { s: 1, tx: 0, ty: 0 }; applyView(); } }, '⤢') : null].filter(Boolean));
   }
   const pxScale = () => canvas.width / canvas.getBoundingClientRect().width; // px de imagen por px de pantalla
 
   // ---------- dibujo ----------
+  let snapMark = null;
   function redraw() {
     if (!img) return;
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    boxes = drawAnnots(ctx, canvas.width, canvas.height, annots);
-    const a = sel();
-    if (a) {
-      const k = pxScale();
-      ctx.save();
-      ctx.setLineDash([6 * k, 5 * k]); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2 * k;
-      const bb = bbox(a);
-      ctx.strokeRect(bb.x - 6 * k, bb.y - 6 * k, bb.w + 12 * k, bb.h + 12 * k);
-      ctx.restore();
-      handles(a).forEach((p) => {
-        ctx.fillStyle = '#fff'; ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 3 * k;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 10 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      });
+    const list = draft && !annots.includes(draft) ? [...annots, draft] : annots;
+    boxes = drawAnnots(ctx, canvas.width, canvas.height, list);
+    const k = pxScale();
+    // recorrido en curso: tramo provisional hasta el dedo
+    if (draft && draft.preview && !draft.pts.length) { // primer punto: solo se marca dónde caerá
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = draft.color; ctx.lineWidth = 3 * k;
+      ctx.beginPath(); ctx.arc(draft.preview[0] * W(), draft.preview[1] * H(), 7 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
+    if (draft && draft.preview && draft.pts.length) {
+      const last = draft.pts[draft.pts.length - 1];
+      ctx.save(); ctx.setLineDash([8 * k, 6 * k]); ctx.strokeStyle = draft.color; ctx.lineWidth = 3 * k;
+      ctx.beginPath(); ctx.moveTo(last[0] * W(), last[1] * H()); ctx.lineTo(draft.preview[0] * W(), draft.preview[1] * H()); ctx.stroke(); ctx.restore();
+    }
+    if (draft) draft.pts.forEach(([x, y]) => { ctx.fillStyle = '#fff'; ctx.strokeStyle = draft.color; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.arc(x * W(), y * H(), 7 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); });
+    const a = sel();
+    if (a && tool === 'select') {
+      const bb = bbox(a);
+      ctx.save(); ctx.lineWidth = 2 * k; ctx.strokeStyle = '#111'; ctx.strokeRect(bb.x - 8 * k, bb.y - 8 * k, bb.w + 16 * k, bb.h + 16 * k);
+      ctx.setLineDash([6 * k, 5 * k]); ctx.strokeStyle = '#fff'; ctx.strokeRect(bb.x - 8 * k, bb.y - 8 * k, bb.w + 16 * k, bb.h + 16 * k); ctx.restore();
+      handles(a).forEach((p) => { ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3.5 * k; ctx.beginPath(); ctx.arc(p.x, p.y, 12 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); });
+    }
+    if (snapMark) { ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.arc(snapMark.x, snapMark.y, 14 * k, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  function pointsOf(a) {
+    if (a.type === 'route') return (a.pts || []).map(([x, y]) => ({ x: x * W(), y: y * H() }));
+    if (a.x2 == null) return [{ x: a.x1 * W(), y: a.y1 * H() }];
+    return [{ x: a.x1 * W(), y: a.y1 * H() }, { x: a.x2 * W(), y: a.y2 * H() }];
   }
   function bbox(a) {
-    const W = canvas.width, H = canvas.height;
-    const xs = [a.x1 * W, (a.x2 ?? a.x1) * W], ys = [a.y1 * H, (a.y2 ?? a.y1) * H];
+    const ps = pointsOf(a); const xs = ps.map((p) => p.x), ys = ps.map((p) => p.y);
     const b = boxes.get(a.id);
     if (b) { xs.push(b.x, b.x + b.w); ys.push(b.y, b.y + b.h); }
     const x = Math.min(...xs), y = Math.min(...ys);
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
   }
   function handles(a) {
-    const W = canvas.width, H = canvas.height;
-    if (['callout', 'arrow', 'line'].includes(a.type)) return [{ k: 1, x: a.x1 * W, y: a.y1 * H }, { k: 2, x: a.x2 * W, y: a.y2 * H }];
+    if (LINEISH.includes(a.type)) return pointsOf(a).map((p, i) => ({ k: i + 1, ...p }));
+    if (a.type === 'route') return pointsOf(a).map((p, i) => ({ k: 'v' + i, ...p }));
     if (['circle', 'rect'].includes(a.type)) return [
-      { k: 'tl', x: Math.min(a.x1, a.x2) * W, y: Math.min(a.y1, a.y2) * H }, { k: 'tr', x: Math.max(a.x1, a.x2) * W, y: Math.min(a.y1, a.y2) * H },
-      { k: 'bl', x: Math.min(a.x1, a.x2) * W, y: Math.max(a.y1, a.y2) * H }, { k: 'br', x: Math.max(a.x1, a.x2) * W, y: Math.max(a.y1, a.y2) * H }];
+      { k: 'tl', x: Math.min(a.x1, a.x2) * W(), y: Math.min(a.y1, a.y2) * H() }, { k: 'tr', x: Math.max(a.x1, a.x2) * W(), y: Math.min(a.y1, a.y2) * H() },
+      { k: 'bl', x: Math.min(a.x1, a.x2) * W(), y: Math.max(a.y1, a.y2) * H() }, { k: 'br', x: Math.max(a.x1, a.x2) * W(), y: Math.max(a.y1, a.y2) * H() }];
     return [];
   }
 
-  // ---------- tocar objetos ----------
+  // ---------- precisión: imán a otras líneas y enderezado ----------
+  function snap(pt, { anchor = null, exclude = null, vertex = -1 } = {}) {
+    const tol = 18 * pxScale();
+    let best = null, bd = tol;
+    const cand = (p) => { const d = Math.hypot(p.x - pt.x, p.y - pt.y); if (d < bd) { bd = d; best = p; } };
+    annots.forEach((a) => {
+      if (a.type !== 'route' && !LINEISH.includes(a.type)) return;
+      pointsOf(a).forEach((p, i) => {
+        if (a.id === exclude && (vertex < 0 || LINEISH.includes(a.type) || i === vertex)) return; // nunca a sí misma
+        cand(p);
+      });
+    });
+    if (draft && draft.id !== exclude) draft.pts.slice(0, -1).forEach(([x, y]) => cand({ x: x * W(), y: y * H() }));
+    if (best) { snapMark = best; return { x: best.x, y: best.y }; }
+    snapMark = null;
+    if (anchor) {
+      const dx = pt.x - anchor.x, dy = pt.y - anchor.y, d = Math.hypot(dx, dy);
+      if (d > 12 * pxScale()) {
+        const ang = Math.atan2(dy, dx), step = Math.PI / 4, near = Math.round(ang / step) * step;
+        if (Math.abs(ang - near) < (5 * Math.PI) / 180) return { x: anchor.x + Math.cos(near) * d, y: anchor.y + Math.sin(near) * d };
+      }
+    }
+    return pt;
+  }
+  const clampPt = (p) => ({ x: Math.max(0, Math.min(W(), p.x)), y: Math.max(0, Math.min(H(), p.y)) });
+  const N = (p) => ({ x: p.x / W(), y: p.y / H() });
+
+  // ---------- tocar marcas (solo en "Mover") ----------
   const distSeg = (px, py, x1, y1, x2, y2) => {
     const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy;
     const t = L ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / L)) : 0;
     return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
   };
   function hit(pt) {
-    const W = canvas.width, H = canvas.height, tol = 16 * pxScale();
+    const tol = 16 * pxScale();
     for (let i = annots.length - 1; i >= 0; i--) {
       const a = annots[i];
       const b = boxes.get(a.id);
       if (b && pt.x >= b.x - 4 && pt.x <= b.x + b.w + 4 && pt.y >= b.y - 4 && pt.y <= b.y + b.h + 4) return a;
-      const X1 = a.x1 * W, Y1 = a.y1 * H, X2 = (a.x2 ?? a.x1) * W, Y2 = (a.y2 ?? a.y1) * H;
-      if (['callout', 'arrow', 'line'].includes(a.type) && distSeg(pt.x, pt.y, X1, Y1, X2, Y2) <= tol) return a;
-      if (a.type === 'rect' && pt.x >= Math.min(X1, X2) - tol && pt.x <= Math.max(X1, X2) + tol && pt.y >= Math.min(Y1, Y2) - tol && pt.y <= Math.max(Y1, Y2) + tol) return a;
-      if (a.type === 'circle') {
-        const cx = (X1 + X2) / 2, cy = (Y1 + Y2) / 2, rx = Math.abs(X2 - X1) / 2 + tol, ry = Math.abs(Y2 - Y1) / 2 + tol;
-        if (((pt.x - cx) / rx) ** 2 + ((pt.y - cy) / ry) ** 2 <= 1) return a;
+      const ps = pointsOf(a);
+      if ((LINEISH.includes(a.type) || a.type === 'route') && ps.some((p, j) => j > 0 && distSeg(pt.x, pt.y, ps[j - 1].x, ps[j - 1].y, p.x, p.y) <= tol)) return a;
+      if (['number', 'text'].includes(a.type) && Math.hypot(ps[0].x - pt.x, ps[0].y - pt.y) <= tol * 2) return a;
+      if (a.type === 'rect' || a.type === 'circle') {
+        const [p1, p2] = ps;
+        if (pt.x >= Math.min(p1.x, p2.x) - tol && pt.x <= Math.max(p1.x, p2.x) + tol && pt.y >= Math.min(p1.y, p2.y) - tol && pt.y <= Math.max(p1.y, p2.y) + tol) return a;
       }
     }
     return null;
   }
   function hitHandle(pt) {
     const a = sel(); if (!a) return null;
-    const tol = 22 * pxScale();
+    const tol = 24 * pxScale();
     return handles(a).find((p) => Math.hypot(p.x - pt.x, p.y - pt.y) <= tol) || null;
   }
 
+  // ---------- lupa ----------
+  const LOUPE = 150;
+  function showLoupe(e, pt) {
+    if (e.pointerType === 'mouse') return;
+    const dpr = devicePixelRatio || 1;
+    if (loupe.width !== LOUPE * dpr) { loupe.width = LOUPE * dpr; loupe.height = LOUPE * dpr; }
+    let x = e.clientX - LOUPE / 2, y = e.clientY - LOUPE - 50;
+    if (y < 8) y = e.clientY + 50;
+    x = Math.max(6, Math.min(innerWidth - LOUPE - 6, x));
+    loupe.style.left = `${x}px`; loupe.style.top = `${y}px`; loupe.hidden = false;
+    const disp = canvas.getBoundingClientRect().width / canvas.width;
+    const src = LOUPE / (disp * 2.2);
+    lctx.fillStyle = '#000'; lctx.fillRect(0, 0, loupe.width, loupe.height);
+    lctx.drawImage(canvas, pt.x - src / 2, pt.y - src / 2, src, src, 0, 0, loupe.width, loupe.height);
+    const c = loupe.width / 2;
+    lctx.strokeStyle = 'rgba(0,0,0,.6)'; lctx.lineWidth = 3 * dpr; lctx.beginPath(); lctx.moveTo(c - 14 * dpr, c); lctx.lineTo(c + 14 * dpr, c); lctx.moveTo(c, c - 14 * dpr); lctx.lineTo(c, c + 14 * dpr); lctx.stroke();
+    lctx.strokeStyle = '#fff'; lctx.lineWidth = 1.5 * dpr; lctx.stroke();
+  }
+  const hideLoupe = () => { loupe.hidden = true; };
+
   // ---------- gestos ----------
   const pointers = new Map();
-  let op = null; // {mode:'move'|'resize'|'create', ...}
+  let op = null;
   let pinch = null;
   const toPt = (e) => {
     const r = canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) };
+    return clampPt({ x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) });
   };
-  const norm = (pt) => ({ x: Math.max(0, Math.min(1, pt.x / canvas.width)), y: Math.max(0, Math.min(1, pt.y / canvas.height)) });
+  function cancelOp() {
+    if (op?.created) annots = annots.filter((a) => a !== op.created);
+    if (op?.snap0) annots = JSON.parse(op.snap0);
+    if (draft) draft.preview = null;
+    op = null; snapMark = null; hideLoupe(); redraw();
+  }
 
   stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.pe-zoom')) return;
     e.preventDefault();
     stage.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) { // dos dedos: zoom, se cancela lo que se estaba haciendo
-      if (op && op.started) { annots = JSON.parse(undo.pop()); }
-      op = null;
+    if (pointers.size === 2) {
+      cancelOp();
       const [p1, p2] = [...pointers.values()];
       pinch = { d: Math.hypot(p1.x - p2.x, p1.y - p2.y), mx: (p1.x + p2.x) / 2, my: (p1.y + p2.y) / 2, view: { ...view } };
-      redraw(); return;
+      return;
     }
-    if (pointers.size > 2 || e.target !== canvas) return;
+    if (pointers.size > 2 || !img) return;
     const pt = toPt(e);
-    const hd = hitHandle(pt);
-    if (hd) { op = { mode: 'resize', h: hd.k, start: pt }; return; }
-    const a = hit(pt);
-    if (a) { selId = a.id; op = { mode: 'move', start: pt, orig: { ...a } }; drawProps(); redraw(); return; }
-    if (tool === 'select') { selId = null; drawProps(); redraw(); return; }
-    const n = norm(pt);
-    if (tool === 'number' || tool === 'text') {
-      snapshot();
-      const nn = tool === 'number' ? Math.max(0, ...annots.filter((x) => x.type === 'number').map((x) => x.n)) + 1 : undefined;
-      const obj = { id: uid(), type: tool, color, size, x1: n.x, y1: n.y, text: '', n: nn };
-      annots.push(obj); selId = obj.id; drawProps(true); redraw(); return;
+    const sx = e.clientX, sy = e.clientY;
+    if (tool === 'select') {
+      const hd = hitHandle(pt);
+      if (hd) { op = { mode: 'resize', h: hd.k, snap0: JSON.stringify(annots) }; showLoupe(e, pt); return; }
+      const a = hit(pt);
+      if (a) { selId = a.id; op = { mode: 'move', start: pt, orig: JSON.parse(JSON.stringify(a)), snap0: JSON.stringify(annots) }; drawProps(); redraw(); return; }
+      selId = null; drawProps(); redraw();
+      if (view.s > 1) op = { mode: 'pan', sx, sy, v: { ...view } };
+      return;
     }
-    op = { mode: 'create', start: pt, n0: n };
+    if (tool === 'route') {
+      const p = snap(pt, { anchor: draft ? { x: draft.pts.at(-1)[0] * W(), y: draft.pts.at(-1)[1] * H() } : null });
+      op = { mode: 'routePoint' };
+      if (draft) draft.preview = [p.x / W(), p.y / H()];
+      else draft = { id: uid(), type: 'route', color, size, pts: [], text: '', lengths: '', dashed: false, preview: [p.x / W(), p.y / H()] };
+      redraw(); showLoupe(e, p); drawProps();
+      return;
+    }
+    if (tool === 'number' || tool === 'text') {
+      const p = N(pt);
+      const n = tool === 'number' ? Math.max(0, ...annots.filter((x) => x.type === 'number').map((x) => x.n)) + 1 : undefined;
+      const obj = { id: uid(), type: tool, color, size, x1: p.x, y1: p.y, text: '', n };
+      snapshot(); annots.push(obj); selId = obj.id;
+      op = { mode: 'place', created: obj };
+      redraw(); showLoupe(e, pt); drawProps();
+      return;
+    }
+    // líneas y formas: se dibujan arrastrando
+    const p0 = LINEISH.includes(tool) ? snap(pt) : pt;
+    const obj = { id: uid(), type: tool, color, size, x1: p0.x / W(), y1: p0.y / H(), x2: p0.x / W(), y2: p0.y / H(), text: '' };
+    snapshot(); annots.push(obj); selId = obj.id;
+    op = { mode: 'create', created: obj, anchor: p0, sx, sy };
+    redraw(); showLoupe(e, p0);
   });
 
   stage.addEventListener('pointermove', (e) => {
@@ -323,113 +476,176 @@ export function openPhotoEditor(photo, { caption = '', onSave }) {
       const [p1, p2] = [...pointers.values()];
       const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-      view.s = Math.max(1, Math.min(6, pinch.view.s * (d / pinch.d)));
-      view.tx = pinch.view.tx + (mx - pinch.mx); view.ty = pinch.view.ty + (my - pinch.my);
-      applyView(); return;
+      view = { ...pinch.view };
+      zoomAt(pinch.mx, pinch.my, pinch.view.s * (d / pinch.d));
+      view.tx += mx - pinch.mx; view.ty += my - pinch.my; applyView();
+      return;
     }
     if (!op) return;
+    if (op.mode === 'pan') { view.tx = op.v.tx + (e.clientX - op.sx); view.ty = op.v.ty + (e.clientY - op.sy); applyView(); return; }
     const pt = toPt(e);
-    const W = canvas.width, H = canvas.height;
-    const dx = (pt.x - op.start.x) / W, dy = (pt.y - op.start.y) / H;
-    if (!op.started && Math.hypot(pt.x - op.start.x, pt.y - op.start.y) < 4 * pxScale()) return;
-    if (!op.started) { op.started = true; snapshot(); }
+    if (op.mode === 'routePoint') {
+      const last = draft.pts.at(-1);
+      const p = snap(pt, { anchor: last ? { x: last[0] * W(), y: last[1] * H() } : null });
+      draft.preview = [p.x / W(), p.y / H()]; redraw(); showLoupe(e, p); return;
+    }
+    if (op.mode === 'place') { const p = N(pt); op.created.x1 = p.x; op.created.y1 = p.y; redraw(); showLoupe(e, pt); return; }
+    if (op.mode === 'create') {
+      const o = op.created;
+      const p = LINEISH.includes(o.type) ? snap(pt, { anchor: op.anchor, exclude: o.id }) : pt;
+      o.x2 = p.x / W(); o.y2 = p.y / H(); redraw(); showLoupe(e, p); return;
+    }
+    const a = sel(); if (!a) return;
     if (op.mode === 'move') {
-      const a = sel(); const o = op.orig;
-      a.x1 = o.x1 + dx; a.y1 = o.y1 + dy;
-      if (o.x2 != null) { a.x2 = o.x2 + dx; a.y2 = o.y2 + dy; }
-    } else if (op.mode === 'resize') {
-      const a = sel(); const n = norm(pt);
-      if (op.h === 1) { a.x1 = n.x; a.y1 = n.y; } else if (op.h === 2) { a.x2 = n.x; a.y2 = n.y; } else {
-        // esquina: se mueve la que corresponde, la opuesta queda fija
-        const L = Math.min(a.x1, a.x2), R = Math.max(a.x1, a.x2), T = Math.min(a.y1, a.y2), B = Math.max(a.y1, a.y2);
-        const nb = { L, R, T, B };
+      if (!op.moved) { op.moved = true; undo.push(op.snap0); redo.length = 0; dirty = true; }
+      const dx = (pt.x - op.start.x) / W(), dy = (pt.y - op.start.y) / H(), o = op.orig;
+      if (a.type === 'route') a.pts = o.pts.map(([x, y]) => [x + dx, y + dy]);
+      else { a.x1 = o.x1 + dx; a.y1 = o.y1 + dy; if (o.x2 != null) { a.x2 = o.x2 + dx; a.y2 = o.y2 + dy; } }
+      redraw(); return;
+    }
+    if (op.mode === 'resize') {
+      if (!op.moved) { op.moved = true; undo.push(op.snap0); redo.length = 0; dirty = true; }
+      if (op.h === 1 || op.h === 2) {
+        const other = op.h === 1 ? { x: a.x2 * W(), y: a.y2 * H() } : { x: a.x1 * W(), y: a.y1 * H() };
+        const p = snap(pt, { anchor: other, exclude: a.id, vertex: op.h - 1 });
+        if (op.h === 1) { a.x1 = p.x / W(); a.y1 = p.y / H(); } else { a.x2 = p.x / W(); a.y2 = p.y / H(); }
+        showLoupe(e, p);
+      } else if (String(op.h).startsWith('v')) {
+        const i = Number(op.h.slice(1));
+        const prev = a.pts[i - 1] || a.pts[i + 1];
+        const p = snap(pt, { anchor: prev ? { x: prev[0] * W(), y: prev[1] * H() } : null, exclude: a.id, vertex: i });
+        a.pts[i] = [p.x / W(), p.y / H()]; showLoupe(e, p);
+      } else {
+        const n = N(pt);
+        const nb = { L: Math.min(a.x1, a.x2), R: Math.max(a.x1, a.x2), T: Math.min(a.y1, a.y2), B: Math.max(a.y1, a.y2) };
         if (op.h.includes('l')) nb.L = n.x; else nb.R = n.x;
         if (op.h.includes('t')) nb.T = n.y; else nb.B = n.y;
         a.x1 = nb.L; a.x2 = nb.R; a.y1 = nb.T; a.y2 = nb.B;
         if (a.x1 > a.x2) { [a.x1, a.x2] = [a.x2, a.x1]; op.h = op.h.replace(/[lr]/, (c) => (c === 'l' ? 'r' : 'l')); }
         if (a.y1 > a.y2) { [a.y1, a.y2] = [a.y2, a.y1]; op.h = op.h.replace(/[tb]/, (c) => (c === 't' ? 'b' : 't')); }
+        showLoupe(e, pt);
       }
-    } else if (op.mode === 'create') {
-      const n = norm(pt);
-      if (!op.obj) { op.obj = { id: uid(), type: tool, color, size, x1: op.n0.x, y1: op.n0.y, x2: n.x, y2: n.y, text: '' }; annots.push(op.obj); selId = op.obj.id; }
-      op.obj.x2 = n.x; op.obj.y2 = n.y;
+      redraw();
     }
-    redraw();
   });
 
   const end = (e) => {
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; return; }
     if (!op) return;
-    if (op.mode === 'create') {
-      if (!op.obj) { // toque sin arrastrar: forma con tamaño por defecto
-        snapshot();
-        const r = canvas.width / canvas.height;
-        const d = 0.07;
-        const obj = { id: uid(), type: tool, color, size, text: '' };
-        if (tool === 'circle' || tool === 'rect') Object.assign(obj, { x1: op.n0.x - d, y1: op.n0.y - d * r, x2: op.n0.x + d, y2: op.n0.y + d * r });
-        else Object.assign(obj, { x1: op.n0.x, y1: op.n0.y, x2: Math.min(0.97, op.n0.x + 0.15), y2: Math.max(0.03, op.n0.y - 0.12 * r) });
-        annots.push(obj); op.obj = obj;
+    const o = op; op = null;
+    hideLoupe();
+    if (o.mode === 'routePoint') {
+      if (!draft.pts.length) snapshot();
+      const [x, y] = draft.preview; draft.preview = null;
+      const last = draft.pts.at(-1);
+      if (!last || Math.hypot((x - last[0]) * W(), (y - last[1]) * H()) > 6 * pxScale()) draft.pts.push([x, y]);
+      dirty = true;
+    } else if (o.mode === 'create') {
+      const a = o.created;
+      const tiny = Math.hypot(e.clientX - o.sx, e.clientY - o.sy) < 8;
+      if (tiny) { // toque sin arrastrar: tamaño por defecto
+        const r = canvas.width / canvas.height, d = 0.07;
+        if (a.type === 'circle' || a.type === 'rect') Object.assign(a, { x1: a.x1 - d, y1: a.y1 - d * r, x2: a.x1 + d, y2: a.y1 + d * r });
+        else Object.assign(a, { x2: Math.min(0.97, a.x1 + 0.16), y2: Math.max(0.03, a.y1 - 0.1 * r) });
       }
-      selId = op.obj.id;
-      drawProps(op.obj.type === 'callout');
-    } else drawProps();
-    op = null;
+    }
+    snapMark = null;
+    drawProps(o.mode === 'create' && o.created.type === 'callout' || o.mode === 'place');
     redraw();
   };
   stage.addEventListener('pointerup', end);
-  stage.addEventListener('pointercancel', end);
+  stage.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); pinch = null; cancelOp(); });
+  stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, view.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)); }, { passive: false });
+
+  function finishRoute() {
+    if (!draft) return;
+    if (draft.pts.length >= 2) { delete draft.preview; annots.push(draft); selId = draft.id; }
+    draft = null; drawProps(true); redraw();
+  }
 
   // ---------- barras ----------
-  const zoomBtn = h('button', { hidden: true, onclick: () => { view = { s: 1, tx: 0, ty: 0 }; applyView(); } }, '⤢ Ajustar');
+  function setTool(k) {
+    if (draft) finishRoute();
+    tool = k; store.set('tool', k);
+    if (k !== 'select') selId = null;
+    drawTools(); drawProps(); redraw();
+  }
+  function doUndo() {
+    if (draft && draft.pts.length) { draft.pts.pop(); if (!draft.pts.length) draft = null; drawProps(); redraw(); return; }
+    if (!undo.length) return;
+    redo.push(JSON.stringify(annots)); annots = JSON.parse(undo.pop());
+    if (!sel()) selId = null; drawProps(); redraw();
+  }
+  function doRedo() { if (!redo.length) return; undo.push(JSON.stringify(annots)); annots = JSON.parse(redo.pop()); drawProps(); redraw(); }
   function drawTools() {
     tools.innerHTML = '';
-    TOOLS.forEach(([k, icon, label]) => tools.appendChild(h('button', { class: `tool ${tool === k ? 'on' : ''}`, onclick: () => { tool = k; drawTools(); drawProps(); } }, h('b', {}, icon), label)));
-    tools.appendChild(h('button', { class: 'tool', onclick: () => { if (!undo.length) return; annots = JSON.parse(undo.pop()); if (!sel()) selId = null; drawProps(); redraw(); } }, h('b', {}, '↶'), 'Deshacer'));
-    tools.appendChild(zoomBtn);
+    TOOLS.forEach(([k, icon, label]) => tools.appendChild(h('button', { class: `tool ${tool === k ? 'on' : ''}`, 'data-tool': k, onclick: () => setTool(k) }, h('b', {}, icon), label)));
+    hint.textContent = HINT[tool];
   }
   function drawProps(focusText) {
     props.innerHTML = '';
-    const a = sel();
+    const a = draft || sel();
     const curColor = a ? a.color : color;
     const curSize = a ? a.size || 2 : size;
+    if (draft) {
+      props.appendChild(h('div', { class: 'txt' },
+        h('span', { class: 'hint-inline' }, draft.pts.length < 2 ? `Puntos: ${draft.pts.length}. Toca el siguiente punto.` : `Puntos: ${draft.pts.length}.`),
+        h('button', { onclick: () => { if (draft.pts.length) draft.pts.pop(); if (!draft.pts.length) draft = null; drawProps(); redraw(); } }, '↶ Punto'),
+        h('button', { class: 'primary', disabled: draft.pts.length < 2, onclick: finishRoute }, '✓ Terminar')));
+    } else if (a) {
+      const del = h('button', { class: 'danger', onclick: () => { snapshot(); annots = annots.filter((x) => x.id !== a.id); selId = null; drawProps(); redraw(); } }, '🗑');
+      if (TEXT_TYPES.includes(a.type)) {
+        const inp = h('input', { value: a.text || '', placeholder: PLACEHOLDER[a.type] || 'Texto', class: focusText && touchUI ? 'pulse' : '',
+          onfocus: () => { inp.classList.remove('pulse'); },
+          oninput: (e) => { if (!inp.dataset.snap) { snapshot(); inp.dataset.snap = '1'; } a.text = e.target.value; redraw(); },
+          onkeydown: (e) => { if (e.key === 'Enter') inp.blur(); } });
+        props.appendChild(h('div', { class: 'txt' }, inp, del));
+        if (focusText && !touchUI) setTimeout(() => inp.focus(), 60);
+      } else props.appendChild(del);
+      if (a.type === 'route') {
+        const lens = h('input', { value: a.lengths || '', placeholder: 'Medidas por tramo: 20, 15, 5, 3', inputmode: 'decimal',
+          oninput: (e) => { if (!lens.dataset.snap) { snapshot(); lens.dataset.snap = '1'; } a.lengths = e.target.value; redraw(); } });
+        props.appendChild(h('div', { class: 'txt' }, lens,
+          h('button', { class: a.dashed ? 'on' : '', onclick: () => { snapshot(); a.dashed = !a.dashed; drawProps(); redraw(); } }, '┄ Discontinua')));
+      }
+    }
     COLORS.forEach((c) => props.appendChild(h('button', {
       class: `sw ${c === curColor ? 'on' : ''}`, style: { background: c }, 'aria-label': 'Color',
-      onclick: () => { if (a) { snapshot(); a.color = c; } else color = c; color = c; drawProps(); redraw(); },
+      onclick: () => { if (a) { if (a !== draft) snapshot(); a.color = c; } color = c; store.set('color', c); drawProps(); redraw(); },
     })));
     ['S', 'M', 'L'].forEach((l, i) => props.appendChild(h('button', {
-      class: curSize === i + 1 ? 'on' : '', onclick: () => { if (a) { snapshot(); a.size = i + 1; } size = i + 1; drawProps(); redraw(); },
+      class: `sz ${curSize === i + 1 ? 'on' : ''}`, onclick: () => { if (a) { if (a !== draft) snapshot(); a.size = i + 1; } size = i + 1; store.set('size', size); drawProps(); redraw(); },
     }, l)));
-    if (a) {
-      const del = h('button', { class: 'danger', onclick: () => { snapshot(); annots = annots.filter((x) => x.id !== a.id); selId = null; drawProps(); redraw(); } }, '🗑 Borrar');
-      if (TEXT_TYPES.includes(a.type)) {
-        const inp = h('input', { value: a.text || '', placeholder: PLACEHOLDER[a.type] || 'Texto',
-          oninput: (e) => { if (!inp.dataset.snap) { snapshot(); inp.dataset.snap = '1'; } a.text = e.target.value; redraw(); } });
-        props.prepend(h('div', { class: 'txt' }, inp, del));
-        if (focusText) setTimeout(() => inp.focus(), 60);
-      } else props.appendChild(del);
-    } else {
-      props.appendChild(h('span', { class: 'hint' }, tool === 'select'
-        ? 'Toca una marca para editarla · arrástrala para moverla · dos dedos = zoom'
-        : 'Toca o arrastra sobre la foto para añadir'));
-    }
+  }
+
+  function onKey(e) {
+    if (e.target.tagName === 'INPUT') return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); doRedo(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && sel()) { snapshot(); annots = annots.filter((x) => x.id !== selId); selId = null; drawProps(); redraw(); }
+    else if (e.key === 'Enter' && draft) finishRoute();
+    else if (e.key === 'Escape') { if (draft) finishRoute(); else { selId = null; drawProps(); redraw(); } }
   }
 
   function close(save) {
+    if (draft) finishRoute();
     if (!save && dirty && !confirm('¿Descartar los cambios en la foto?')) return;
     document.body.style.overflow = '';
     window.removeEventListener('resize', fit);
+    window.removeEventListener('keydown', onKey);
     root.remove();
     if (save) onSave(annots, capInput.value);
   }
 
-  drawTools(); drawProps();
+  drawTools(); drawProps(); drawZoom();
   window.addEventListener('resize', fit);
+  window.addEventListener('keydown', onKey);
   loadImage(photo.dataUrl).then((im) => {
     img = im;
-    const k = Math.min(1, 2000 / Math.max(im.naturalWidth, im.naturalHeight));
+    const k = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
     canvas.width = Math.round(im.naturalWidth * k); canvas.height = Math.round(im.naturalHeight * k);
     fit(); redraw();
   });
-  return { close };
+  return { close, get annots() { return annots; } };
 }

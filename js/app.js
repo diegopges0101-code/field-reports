@@ -1,8 +1,10 @@
 import { h, $, toast } from './ui.js';
 import { api, setToken, getToken } from './api.js';
-import { state, bootstrap, sync, pendingCount } from './store.js';
+import { state, bootstrap, sync, pendingCount, applyBootData } from './store.js';
+import { kv } from './db.js';
+import { applyCachedIcons, applyLogoIcons, cachedLogo } from './icons.js';
 import { API_URL, APP_VERSION } from './config.js';
-import { listView } from './views/list.js';
+import { listView, defaultList } from './views/list.js';
 import { editorView } from './views/editor.js';
 import { usersView, catalogView, companyView } from './views/admin.js';
 
@@ -55,7 +57,19 @@ window.addEventListener('offline', () => updatePill());
 // ---------------------------------------------------------------------
 // Acceso
 // ---------------------------------------------------------------------
+/** Tras entrar: los datos y la lista ya vienen en la respuesta del login → se muestra la app sin esperar más. */
+async function afterLogin(r) {
+  setToken(r.token);
+  if (r.boot) {
+    await applyBootData(r.boot);
+    await kv.set(defaultList(r.boot.user).key, { rows: r.list || [], at: Date.now() });
+    await start();
+  } else await start({ fresh: true });
+}
+
 function loginView() {
+  // Despierta el servidor de Google mientras se escribe la contraseña (evita el "arranque en frío")
+  api('ping', {}, { timeout: 30000 }).catch(() => {});
   const user = h('input', { autocomplete: 'username', autocapitalize: 'none', required: true });
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const err = h('div', { class: 'error', hidden: true });
@@ -64,13 +78,13 @@ function loginView() {
     e.preventDefault(); err.hidden = true; btn.disabled = true; btn.textContent = 'Entrando…';
     try {
       const r = await api('login', { username: user.value, password: pw.value }, { timeout: 120000 });
-      setToken(r.token);
-      if (r.mustChange) return render(changePasswordView(pw.value));
-      await start({ fresh: true });
+      if (r.mustChange) { setToken(r.token); return render(changePasswordView(pw.value)); }
+      await afterLogin(r);
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     btn.disabled = false; btn.textContent = 'Entrar';
   } },
-  h('h2', {}, 'Field Reports'), h('p', { class: 'muted' }, 'Surveys e informes de instalación Starlink / Peplink'),
+  cachedLogo() ? h('img', { class: 'login-logo', src: cachedLogo(), alt: '' }) : null,
+  h('h2', { style: { textAlign: 'center' } }, 'Field Reports'), h('p', { class: 'muted', style: { textAlign: 'center' } }, 'Surveys e informes de instalación Starlink / Peplink'),
   h('label', { class: 'label' }, 'Usuario o email'), user,
   h('label', { class: 'label mt' }, 'Contraseña'), pw, err, btn,
   h('p', { class: 'muted small mt' }, '¿Sin cuenta o contraseña olvidada? Pídesela al administrador.'),
@@ -88,7 +102,7 @@ function changePasswordView(oldPw = '') {
     if (n1.value !== n2.value) { err.textContent = 'Las contraseñas no coinciden'; err.hidden = false; return; }
     try {
       const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value }, { timeout: 120000 });
-      setToken(r.token); toast('Contraseña cambiada'); await start({ fresh: true });
+      toast('Contraseña cambiada'); await afterLogin(r);
     } catch (ex) {
       err.textContent = ex.code === 'offline'
         ? 'El servidor no respondió a tiempo. Puede que el cambio SÍ se haya guardado: pulsa "Salir" y entra con la contraseña NUEVA; si no funciona, con la antigua.'
@@ -145,15 +159,17 @@ async function start({ fresh = false } = {}) {
     return;
   }
   window.onhashchange = () => route();
+  applyLogoIcons(state.logo);
   await route();
   sync();
 }
 
 window.addEventListener('auth-expired', () => { state.user = null; render(loginView()); toast('Sesión caducada: vuelve a entrar'); });
 window.addEventListener('must-change', () => render(changePasswordView()));
-window.addEventListener('boot-refreshed', () => { const b = $('.topbar'); if (b && state.user) b.replaceWith(topbar()); updatePill(); });
+window.addEventListener('boot-refreshed', () => { const b = $('.topbar'); if (b && state.user) b.replaceWith(topbar()); updatePill(); applyLogoIcons(state.logo); });
 
 // Arranque
+applyCachedIcons();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -1,6 +1,8 @@
 import { h, toast, modal, confirmBox, fmtDateTime, copyText, compressImage } from '../ui.js';
 import { api } from '../api.js';
 import { state, bootstrap } from '../store.js';
+import { iconsZip, iconPreview, iconMode, setIconMode, applyLogoIcons } from '../icons.js';
+import { downloadBlob } from '../ui.js';
 
 const ROLE = { admin: 'Administrador', supervisor: 'Supervisor', technician: 'Técnico' };
 
@@ -37,7 +39,8 @@ export async function usersView(page) {
 
   async function load() {
     list.innerHTML = '';
-    const users = await api('listUsers');
+    let users;
+    try { users = await api('listUsers'); } catch (e) { list.appendChild(h('div', { class: 'error' }, e.message)); return; }
     users.forEach((u) => {
       const upd = async (patch) => { try { await api('updateUser', { id: u.id, patch }); toast('Guardado'); load(); bootstrap(); } catch (e) { toast(e.message); } };
       list.appendChild(h('div', { class: 'list-row' },
@@ -116,5 +119,36 @@ export async function companyView(page) {
         } })),
       h('div', { class: 'full' }, h('button', { class: 'btn primary', onclick: async () => {
         try { await api('saveConfig', { config: c }); await bootstrap(); toast('Guardado. Se aplica a los informes nuevos y no emitidos.'); } catch (e) { toast(e.message); }
-      } }, 'Guardar'))));
+      } }, 'Guardar'))),
+    iconSection());
+}
+
+// Icono de la app (pantalla de inicio del móvil, pestaña del navegador)
+function iconSection() {
+  const prev = h('div', {});
+  let mode = iconMode();
+  const draw = async () => {
+    prev.innerHTML = '';
+    if (!state.logo) { prev.appendChild(h('p', { class: 'muted' }, 'No hay logo: pega tu 08_Logo.gs en Apps Script o sube uno arriba.')); return; }
+    try { prev.appendChild(await iconPreview(state.logo, mode)); } catch { prev.appendChild(h('p', { class: 'error' }, 'El logo no es una imagen válida.')); }
+  };
+  const modeSel = h('div', { class: 'seg' },
+    h('button', { type: 'button', class: mode === 'symbol' ? 'on' : '', onclick: (e) => pick('symbol', e) }, 'Solo el símbolo'),
+    h('button', { type: 'button', class: mode === 'full' ? 'on' : '', onclick: (e) => pick('full', e) }, 'Logo completo'));
+  function pick(m, e) {
+    mode = m; setIconMode(m); [...modeSel.children].forEach((b) => b.classList.toggle('on', b === e.target));
+    draw(); applyLogoIcons(state.logo);
+  }
+  draw();
+  return h('div', { class: 'card mt stack' },
+    h('h4', {}, 'Icono de la app'),
+    h('p', { class: 'muted small' }, 'Se crea a partir del logo. En la pestaña del navegador y en iPhone se aplica solo. Para que también salga al instalar la app en Android o PC: descarga los iconos y súbelos a la carpeta icons de GitHub (sustituyendo los que hay).'),
+    modeSel, prev,
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', onclick: async (e) => {
+      if (!state.logo) return toast('No hay logo');
+      e.target.disabled = true;
+      try { downloadBlob(await iconsZip(state.logo, mode), 'iconos-app.zip'); toast('Descomprime iconos-app.zip y sube los 5 archivos a la carpeta icons de GitHub'); }
+      catch (err) { toast(err.message); }
+      e.target.disabled = false;
+    } }, '⬇ Descargar iconos para GitHub')));
 }

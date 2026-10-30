@@ -9,8 +9,9 @@
   -webkit-text-size-adjust: 100%;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); overflow-x: hidden; }
-body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
+/* Ojo: no poner overscroll-behavior ni overflow en body: bloquea la rueda del ratón en Chrome/Edge de PC */
+html { overflow-x: hidden; }
+body { margin: 0; background: var(--bg); -webkit-tap-highlight-color: transparent; }
 a { color: var(--blue2); text-decoration: none; }
 img { max-width: 100%; }
 h2 { margin: 4px 0 10px; font-size: 1.2rem; } h3 { margin: 0 0 12px; font-size: 1.1rem; } h4 { margin: 0 0 10px; }
@@ -240,8 +241,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f1f3f5; color:
 
 /* Editor de fotos con el móvil en horizontal: herramientas en una columna a la derecha */
 @media (orientation: landscape) and (max-height: 560px) {
-  .pe { display: grid; grid-template-columns: minmax(0, 1fr) 290px; grid-template-rows: auto auto auto 1fr;
-    grid-template-areas: "stage top" "stage props" "stage tools" "stage cap"; }
+  .pe { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas: "stage top" "stage hint" "stage props" "stage tools" "stage cap"; }
+  .pe-hint { grid-area: hint; font-size: 11px; padding: 4px 8px; }
   .pe-stage { grid-area: stage; padding-left: env(safe-area-inset-left); }
   .pe-top { grid-area: top; padding-top: 6px; }
   .pe-props:not(.pe-cap) { grid-area: props; }
@@ -258,3 +260,91 @@ input:disabled, select:disabled, textarea:disabled { background: #f1f3f5; color:
   .pe input { padding: 6px 8px; }
 }
 }
+
+/* ---- Editor de fotos v2.2: pista, lupa, zoom ---- */
+.pe-hint { flex: none; background: #0b1220; color: #cbd5e1; font-size: 12.5px; padding: 6px 12px; line-height: 1.3; }
+.pe-loupe { position: fixed; z-index: 160; width: 150px; height: 150px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 6px 24px rgba(0,0,0,.5); pointer-events: none; background: #000; }
+.pe-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; z-index: 2; }
+.pe-zoom button { width: 44px; height: 44px; font-size: 22px; background: rgba(17,24,39,.85); border-color: #4b5563; border-radius: 50%; padding: 0; }
+.pe-stage canvas { transform-origin: 0 0; }
+.pe .pulse { outline: 2px solid #fbbf24; animation: pulse 1s infinite; }
+.pe .hint-inline { font-size: 13px; color: #cbd5e1; flex: 1; align-self: center; }
+.pe .sz { min-width: 38px; }
+
+/* Pasos: en PC se ven todos (en dos filas si hace falta) */
+@media (min-width: 900px), (hover: hover) and (pointer: fine) {
+  .steps { flex-wrap: wrap; overflow: visible; row-gap: 6px; }
+  .step:hover { border-color: var(--blue2); }
+}
+
+/* =====================================================================
+   TEMA ORBIUS: negro, grises y blanco (como el logo)
+   Solo afecta a la app; el PDF y las marcas de las fotos no cambian.
+   ===================================================================== */
+:root {
+  --blue: #111111; --blue2: #111111; --light: #f1f1f1; --bg: #f5f5f5; --text: #161616; --muted: #6b6b6b; --line: #d6d6d6;
+  --ok: #1f7a4d; --warn: #9a5b00; --bad: #b42318;
+  --ink: #111111; --ink-2: #3a3a3a; --gray-1: #f1f1f1; --gray-2: #e4e4e4; --gray-3: #bdbdbd;
+}
+html, body { background: var(--bg); }
+a { color: var(--ink); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); }
+
+/* Barra superior blanca con el logo en negro */
+.topbar { background: #fff; color: var(--ink); border-bottom: 1px solid var(--gray-2); }
+.brand { color: var(--ink) !important; }
+.brand img { background: transparent; padding: 0; border-radius: 0; height: 30px; max-width: 110px; }
+.topnav a { color: #555; }
+.topnav a.active { background: var(--gray-1); color: var(--ink); }
+.menu-btn { border-color: var(--line); color: var(--ink); background: #fff; }
+.menu a.active { background: var(--gray-1); color: var(--ink); }
+.pill { background: var(--gray-1); color: #333; }
+.pill.ok { background: var(--gray-1); color: #333; } .pill.ok::before { background: var(--ok); }
+.pill.warn { background: #fff4e0; color: var(--warn); }
+.pill.bad { background: #fde8e6; color: var(--bad); }
+
+/* Botones y selecciones */
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--ink-2); }
+.btn:hover:not(:disabled) { border-color: var(--gray-3); }
+.chip.on, .seg button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.chip.add { color: var(--ink); border-color: var(--gray-3); }
+.step.on { background: var(--ink); border-color: var(--ink); }
+.step:hover { border-color: var(--ink) !important; }
+.big-btn.survey { background: var(--ink-2); } .big-btn.install { background: var(--ink); }
+.info-box { background: var(--gray-1); }
+.card.eq, .photo { background: #fafafa; border-color: var(--gray-2); }
+.photo img, .ph-empty { background: var(--gray-2); }
+
+/* Estados: neutros, con color solo donde hay que avisar */
+.badge, .st-draft { background: var(--gray-2); color: #333; }
+.st-issued { background: var(--ink); color: #fff; }
+.st-approved, .badge.ok { background: #e7e7e7; color: var(--ink); }
+.st-archived { background: #fff; color: var(--muted); border: 1px solid var(--gray-2); }
+.badge.warn, .st-ready_for_review, .st-changes_requested { background: #fff4e0; color: var(--warn); }
+.badge.bad { background: #fde8e6; color: var(--bad); }
+.save { border-color: var(--gray-2); }
+.save-ok { color: #333; } .save-ok::before { background: var(--ok); }
+
+/* Entrada */
+.login { background: linear-gradient(160deg, #0b0b0b 0%, #2b2b2b 60%, #4a4a4a 100%); }
+.login .login-logo { display: block; max-width: 220px; max-height: 80px; margin: 0 auto 6px; object-fit: contain; }
+
+/* Esqueletos y barra de carga en gris */
+.skel { background: linear-gradient(90deg, #e9e9e9 25%, #f6f6f6 50%, #e9e9e9 75%); background-size: 200% 100%; }
+.refreshing { background: linear-gradient(90deg, transparent, var(--ink), transparent); background-size: 50% 100%; background-repeat: no-repeat; }
+
+/* Editor de fotos: negro y blanco (las marcas mantienen sus colores) */
+.pe, .pe-top, .pe-tools, .pe-hint { background: #0d0d0d; }
+.pe-props { background: #1c1c1c; }
+.pe button { background: #1f1f1f; border-color: #3a3a3a; }
+.pe button.on { background: #fff; color: #111; border-color: #fff; }
+.pe button.primary { background: #fff; color: #111; border-color: #fff; }
+.pe input { background: #0d0d0d; border-color: #3a3a3a; }
+.pe .sw.on { outline-color: #fff; }
+.pe-hint, .pe .hint-inline { color: #c8c8c8; }
+.pe-zoom button { background: rgba(20,20,20,.85); border-color: #555; }
+.modal-back { background: rgba(0,0,0,.55); }
+.icon-prev { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.icon-prev img { width: 72px; height: 72px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.icon-prev .ip-square { border-radius: 16px; } .icon-prev .ip-round { border-radius: 50%; }

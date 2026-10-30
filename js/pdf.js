@@ -9,7 +9,8 @@ const COL_W = 415, COL_X = [40, 505], TOP = 128, BOTTOM = 470; // zona útil de 
 const LH = 13.5, FS = 10;
 
 const hex = (c) => { const n = parseInt(c.replace('#', ''), 16); return PDFLib.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
-const C = { blue: hex('#1c4f86'), light: hex('#d5e6f4'), p1: hex('#dceaf6'), p2: hex('#bcd8ee'), p3: hex('#99c4e3'), band: hex('#eef3f8'), gray: hex('#5f6368'), dark: hex('#1f1f1f'), mid: hex('#4a4a4a'), white: hex('#ffffff'), line: hex('#333333') };
+let C; // colores: se crean al generar el primer PDF (cuando el motor ya está cargado)
+const makeColors = () => ({ blue: hex('#1c4f86'), light: hex('#d5e6f4'), p1: hex('#dceaf6'), p2: hex('#bcd8ee'), p3: hex('#99c4e3'), band: hex('#eef3f8'), gray: hex('#5f6368'), dark: hex('#1f1f1f'), mid: hex('#4a4a4a'), white: hex('#ffffff'), line: hex('#333333') });
 
 // Helvetica estándar solo admite WinAnsi: se sustituyen los símbolos no compatibles
 const WINANSI_EXTRA = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
@@ -91,7 +92,22 @@ function drawContain(page, img, x, yTop, w, h) {
 }
 
 // ---------------------------------------------------------------------
+let pdfLibP;
+/** El motor de PDF (525 KB) solo se descarga cuando hace falta, no al abrir la app. */
+export function ensurePdfLib() {
+  if (globalThis.PDFLib) return Promise.resolve();
+  pdfLibP = pdfLibP || new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = new URL('../vendor/pdf-lib.min.js', import.meta.url).href;
+    sc.onload = () => res(); sc.onerror = () => { pdfLibP = null; rej(new Error('No se pudo cargar el generador de PDF (¿sin conexión la primera vez?)')); };
+    document.head.appendChild(sc);
+  });
+  return pdfLibP;
+}
+
 export async function buildPdf(model, opts) {
+  await ensurePdfLib();
+  C = C || makeColors();
   const { PDFDocument, StandardFonts } = PDFLib;
   const doc = await PDFDocument.create();
   doc.setTitle(model.fileName.replace(/\.pdf$/, ''));

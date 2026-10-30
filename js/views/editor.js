@@ -35,6 +35,11 @@ export async function editorView(page, id, stepIdx) {
   };
   const banner = h('div', {});
   const stepsNav = h('nav', { class: 'steps' });
+  // Rueda del ratón sobre la barra de pasos = desplazamiento horizontal (si no caben)
+  stepsNav.addEventListener('wheel', (e) => {
+    if (stepsNav.scrollWidth <= stepsNav.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault(); stepsNav.scrollLeft += e.deltaY;
+  }, { passive: false });
   const body = h('section', { class: 'card' });
 
   async function refreshSaveState() {
