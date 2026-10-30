@@ -3,18 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1c4f86" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Field Reports" />
   <title>Orbius Field Reports</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" href="icons/favicon-64.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="css/app.css" />
+  <!-- descarga en paralelo de todos los módulos: arranque más rápido -->
+  <link rel="modulepreload" href="js/app.js" />
+  <link rel="modulepreload" href="js/ui.js" />
+  <link rel="modulepreload" href="js/api.js" />
+  <link rel="modulepreload" href="js/config.js" />
+  <link rel="modulepreload" href="js/store.js" />
+  <link rel="modulepreload" href="js/db.js" />
+  <link rel="modulepreload" href="js/templates.js" />
+  <link rel="modulepreload" href="js/views/list.js" />
+  <link rel="modulepreload" href="js/views/editor.js" />
+  <link rel="modulepreload" href="js/views/admin.js" />
+  <link rel="modulepreload" href="js/views/outputs.js" />
+  <link rel="modulepreload" href="js/fields.js" />
+  <link rel="modulepreload" href="js/photos.js" />
+  <link rel="modulepreload" href="js/annot.js" />
+  <link rel="modulepreload" href="js/english.js" />
+  <link rel="modulepreload" href="js/pdf.js" />
+  <link rel="modulepreload" href="js/icons.js" />
 </head>
 <body>
   <div id="app"><div class="page">Cargando…</div></div>
-  <script src="vendor/pdf-lib.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
