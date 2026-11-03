@@ -1,3 +1,4 @@
+import { icon } from '../svg.js';
 import { h, toast, modal, confirmBox, fmtDateTime, copyText, compressImage } from '../ui.js';
 import { api } from '../api.js';
 import { state, bootstrap } from '../store.js';
@@ -150,5 +151,5 @@ function iconSection() {
       try { downloadBlob(await iconsZip(state.logo, mode), 'iconos-app.zip'); toast('Descomprime iconos-app.zip y sube los 5 archivos a la carpeta icons de GitHub'); }
       catch (err) { toast(err.message); }
       e.target.disabled = false;
-    } }, '⬇ Descargar iconos para GitHub')));
+    } }, icon('download'), 'Descargar iconos para GitHub')));
 }

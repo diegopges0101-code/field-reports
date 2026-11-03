@@ -1,3 +1,4 @@
+import { icon } from './svg.js';
 // Fotos: hacer/elegir, pie de foto, ordenar, borrar y EDITAR (marcas movibles)
 import { h, toast, compressImage, confirmBox } from './ui.js';
 import { listPhotos, addPhoto, updatePhoto, deletePhoto, ensurePhotoData } from './store.js';
@@ -24,14 +25,14 @@ export function photosField(report, category, ro) {
       const img = h('img', { alt: '', loading: 'lazy', onclick: () => (!ro ? edit(p) : null) });
       thumbFor(p).then((src) => { img.src = src || ''; });
       grid.appendChild(h('div', { class: 'photo' },
-        p.dataUrl ? img : h('div', { class: 'ph-empty' }, '☁'),
+        p.dataUrl ? img : h('div', { class: 'ph-empty' }, icon('cloud', { size: 26 })),
         !p.uploaded || p.pendingMeta ? h('span', { class: 'badge warn tiny' }, 'Por subir') : null,
         p.annots?.length ? h('span', { class: 'badge tiny' }, `${p.annots.length} marca(s)`) : null,
         h('input', { placeholder: 'Pie de foto', value: p.caption || '', disabled: ro, onchange: async (e) => { p.caption = e.target.value; await updatePhoto(p, { caption: p.caption }); } }),
         ro ? null : h('div', { class: 'tools' },
           h('button', { type: 'button', class: 'btn small', title: 'Mover a la izquierda', 'aria-label': 'Mover a la izquierda', onclick: () => move(i, -1) }, '◀'),
-          h('button', { type: 'button', class: 'btn small', title: 'Editar / marcar', 'aria-label': 'Editar', disabled: !p.dataUrl, onclick: () => edit(p) }, '✎'),
-          h('button', { type: 'button', class: 'btn small danger', title: 'Borrar', 'aria-label': 'Borrar', onclick: () => remove(p) }, '🗑'),
+          h('button', { type: 'button', class: 'btn small', title: 'Editar / marcar', 'aria-label': 'Editar', disabled: !p.dataUrl, onclick: () => edit(p) }, icon('edit', { size: 17 })),
+          h('button', { type: 'button', class: 'btn small danger', title: 'Borrar', 'aria-label': 'Borrar', onclick: () => remove(p) }, icon('trash', { size: 17 })),
           h('button', { type: 'button', class: 'btn small', title: 'Mover a la derecha', 'aria-label': 'Mover a la derecha', onclick: () => move(i, 1) }, '▶'))));
     });
   }
@@ -75,7 +76,7 @@ export function photosField(report, category, ro) {
   refresh();
   return h('div', {}, grid,
     ro ? null : h('div', { class: 'row wrap mt' },
-      h('button', { type: 'button', class: 'btn primary', onclick: () => camInput.click() }, '📷 Hacer foto'),
-      h('button', { type: 'button', class: 'btn', onclick: () => fileInput.click() }, '🖼 Galería')),
+      h('button', { type: 'button', class: 'btn primary', onclick: () => camInput.click() }, icon('camera'), 'Hacer foto'),
+      h('button', { type: 'button', class: 'btn', onclick: () => fileInput.click() }, icon('image'), 'Galería')),
     fileInput, camInput, status);
 }

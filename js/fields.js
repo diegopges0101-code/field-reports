@@ -1,3 +1,4 @@
+import { icon } from './svg.js';
 // Dibuja los campos del formulario a partir de las plantillas (templates.js)
 import { h, uid, toast } from './ui.js';
 import { photosField } from './photos.js';
@@ -22,7 +23,8 @@ export function renderField(f, ctx) {
       return wrap(h('input', { type: f.type === 'email' ? 'email' : 'text', value: v ?? '', placeholder: f.placeholder || '', disabled: ro, oninput: (e) => set(e.target.value) }));
     case 'textarea': {
       const ta = h('textarea', { rows: 3, placeholder: f.placeholder || 'Puedes escribir o dictar en español; se traducirá al inglés', disabled: ro, oninput: (e) => set(e.target.value) }, v ?? '');
-      return wrap(h('div', { class: 'with-mic' }, ta, ro ? null : micButton(ta, (txt) => set(txt))));
+      const mic = ro ? null : micButton(ta, (txt) => set(txt));
+      return wrap(h('div', { class: 'with-mic' }, ta, mic, mic?._live));
     }
     case 'number':
       return wrap(h('input', { type: 'number', inputmode: 'decimal', step: 'any', value: v ?? '', disabled: ro, oninput: (e) => set(e.target.value === '' ? '' : Number(e.target.value)) }));
@@ -110,38 +112,92 @@ function gpsInput(value, onChange, ro) {
     type: 'button', class: 'btn small', disabled: ro, title: 'Usar mi posición',
     onclick: () => {
       if (!navigator.geolocation) return toast('Este dispositivo no permite GPS');
-      btn.textContent = '…';
+      btn.replaceChildren('Buscando…');
       navigator.geolocation.getCurrentPosition((p) => {
         inp.value = `${dms(p.coords.latitude, 'N', 'S')} – ${dms(p.coords.longitude, 'E', 'W')}`;
-        onChange(inp.value); btn.textContent = '📍 GPS';
+        onChange(inp.value); btn.replaceChildren(icon('pin'), 'GPS');
         toast(`Ubicación obtenida (±${Math.round(p.coords.accuracy)} m)`);
-      }, (e) => { btn.textContent = '📍 GPS'; toast('No se pudo obtener la ubicación: ' + e.message); }, { enableHighAccuracy: true, timeout: 20000 });
+      }, (e) => { btn.replaceChildren(icon('pin'), 'GPS'); toast('No se pudo obtener la ubicación: ' + e.message); }, { enableHighAccuracy: true, timeout: 20000 });
     },
-  }, '📍 GPS');
+  }, icon('pin'), 'GPS');
   return h('div', { class: 'row' }, inp, btn);
 }
 
-// Dictado por voz (funciona en Chrome Android/PC y Safari iOS). Si no, el dictado del teclado.
+// Dictado por voz (Chrome Android/PC, Edge y Safari iOS). Si no hay, queda el dictado del teclado.
+// Rápido: el texto aparece mientras hablas (resultados parciales) y sigue escuchando hasta pulsar parar.
+// (El modo "en el dispositivo" de Chrome se probó y se descartó: en algunas versiones cuelga la pestaña.)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const DICT_LANG = 'es-ES';
+function cap(t, prev) {
+  t = t.trim();
+  if (!t) return '';
+  return (!prev.trim() || /[.!?]\s*$/.test(prev)) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
 function micButton(ta, onText) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return null;
-  let rec = null;
+  let rec = null, active = false, base = '', finals = '';
+  const live = h('div', { class: 'interim', 'aria-live': 'polite' });
+  const write = (interim) => {
+    const txt = [base.trimEnd(), finals.trim()].filter(Boolean).join(' ');
+    ta.value = interim ? [txt, interim.trim()].filter(Boolean).join(' ') : txt;
+    live.textContent = interim ? 'Escuchando…' : '';
+  };
+  const commit = () => { onText(ta.value); };
+  const stop = () => { active = false; try { rec && rec.stop(); } catch { /* */ } };
+
+  function begin() {
+    rec = new SR();
+    rec.lang = DICT_LANG;
+    rec.interimResults = true;       // texto al instante mientras hablas
+    rec.maxAlternatives = 1;
+    // En Android el modo continuo repite frases: se usan tramos cortos que se encadenan solos
+    rec.continuous = !IS_ANDROID;
+    let segFinal = '';
+    rec.onresult = (e) => {
+      let interim = '';
+      segFinal = '';
+      for (let i = 0; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) segFinal += t; else interim += t;
+      }
+      if (!rec.continuous) {
+        write(cap(interim || segFinal, [base, finals].join(' ')));
+        if (segFinal && !interim) { finals = [finals, cap(segFinal, [base, finals].join(' '))].filter(Boolean).join(' '); segFinal = ''; write(''); commit(); }
+      } else {
+        // Continuo: e.results contiene toda la sesión
+        let all = '';
+        for (let i = 0; i < e.results.length; i++) if (e.results[i].isFinal) all += e.results[i][0].transcript;
+        finals = cap(all, base);
+        write(interim ? cap(interim, [base, finals].join(' ')) : '');
+        if (!interim) commit();
+      }
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      active = false;
+      toast(e.error === 'not-allowed' ? 'Permite el micrófono para dictar' : e.error === 'network' ? 'Dictado: sin conexión' : 'Dictado: ' + e.error);
+    };
+    rec.onend = () => {
+      // Sigue escuchando hasta que se pulse parar (el navegador corta solo tras un silencio o en cada frase en Android)
+      if (active) { base = ta.value; finals = ''; begin(); return; }
+      rec = null; write(''); commit();
+      btn.classList.remove('on'); btn.replaceChildren(icon('mic', { size: 18 })); btn.title = 'Dictar';
+    };
+    try { rec.start(); } catch { /* ya iniciado */ }
+  }
+
   const btn = h('button', {
-    type: 'button', class: 'mic', title: 'Dictar',
+    type: 'button', class: 'mic', title: 'Dictar', 'aria-label': 'Dictar',
     onclick: () => {
-      if (rec) { rec.stop(); return; }
-      rec = new SR();
-      rec.lang = 'es-ES'; rec.interimResults = false; rec.continuous = true;
-      rec.onresult = (e) => {
-        let txt = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) txt += e.results[i][0].transcript;
-        if (txt) { ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + txt.trim(); onText(ta.value); }
-      };
-      rec.onerror = (e) => { if (e.error !== 'aborted') toast('Dictado: ' + e.error); };
-      rec.onend = () => { rec = null; btn.classList.remove('on'); };
-      rec.start(); btn.classList.add('on');
+      if (active) { stop(); return; }
+      active = true; base = ta.value; finals = '';
+      btn.classList.add('on'); btn.replaceChildren(icon('stop', { size: 16 })); btn.title = 'Parar';
+      begin();
     },
-  }, '🎤');
+  }, icon('mic', { size: 18 }));
+  btn._live = live;
   return btn;
 }
 
@@ -201,8 +257,8 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
       return h('div', { class: 'card eq' },
         h('div', { class: 'eq-head' }, h('span', {}, `${title} ${countBy[tKey]}`),
           ro ? null : h('div', { class: 'row' },
-            ['antenna', 'router', 'sim'].includes(r.kind) ? h('button', { type: 'button', class: 'btn small', title: 'Añadir otro igual', onclick: () => clone(r) }, '＋ Otra igual') : null,
-            h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: () => onChange(rows.filter((x) => x.id !== r.id), true) }, '🗑'))),
+            ['antenna', 'router', 'sim'].includes(r.kind) ? h('button', { type: 'button', class: 'btn small', title: 'Añadir otro igual', onclick: () => clone(r) }, icon('plus', { size: 16 }), 'Otra igual') : null,
+            h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: () => onChange(rows.filter((x) => x.id !== r.id), true) }, icon('trash', { size: 16 })))),
         h('div', { class: 'grid3' },
           h('div', {}, h('div', { class: 'sublabel' }, 'Fabricante'),
             h('select', { disabled: ro, onchange: (e) => setRow(r.id, { manufacturer: e.target.value, kind: KINDS_BY_MAN[e.target.value][0], model: '' }, true) },

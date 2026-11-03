@@ -1,6 +1,7 @@
+import { icon } from './svg.js';
 import { h, $, toast } from './ui.js';
 import { api, setToken, getToken } from './api.js';
-import { state, bootstrap, sync, pendingCount, applyBootData } from './store.js';
+import { state, bootstrap, sync, pendingCount, applyBootData, logoKey } from './store.js';
 import { kv } from './db.js';
 import { applyCachedIcons, applyLogoIcons, cachedLogo } from './icons.js';
 import { API_URL, APP_VERSION } from './config.js';
@@ -26,8 +27,8 @@ function openMenu() {
   const menu = h('div', { class: 'menu', onclick: (e) => { if (e.target.tagName === 'A') close(); } },
     h('div', { class: 'who' }, state.user?.name, h('br'), h('span', { class: 'tiny' }, { admin: 'Administrador', supervisor: 'Supervisor', technician: 'Técnico' }[state.user?.role] || '')),
     navLinks(),
-    h('button', { onclick: () => { close(); sync(); toast('Sincronizando…'); } }, '↻ Sincronizar ahora'),
-    h('button', { onclick: () => { close(); logout(); } }, 'Salir'),
+    h('button', { onclick: () => { close(); sync(); toast('Sincronizando…'); } }, icon('sync'), 'Sincronizar ahora'),
+    h('button', { onclick: () => { close(); logout(); } }, icon('logout'), 'Salir'),
     h('div', { class: 'who tiny', style: { borderBottom: 0, borderTop: '1px solid #eef0f3', marginTop: '4px' } }, `v${APP_VERSION}`));
   document.body.append(back, menu);
 }
@@ -37,7 +38,7 @@ function topbar() {
     h('a', { href: '#/', class: 'brand' }, state.logo ? h('img', { src: state.logo, alt: '' }) : null, h('span', {}, 'Field Reports')),
     h('nav', { class: 'topnav' }, navLinks()),
     h('span', { id: 'sync-pill', class: 'pill' }),
-    h('button', { class: 'menu-btn', 'aria-label': 'Menú', onclick: openMenu }, '☰'));
+    h('button', { class: 'menu-btn', 'aria-label': 'Menú', onclick: openMenu }, icon('menu', { size: 20 })));
 }
 
 async function updatePill(detail) {
@@ -77,7 +78,7 @@ function loginView() {
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); err.hidden = true; btn.disabled = true; btn.textContent = 'Entrando…';
     try {
-      const r = await api('login', { username: user.value, password: pw.value }, { timeout: 120000 });
+      const r = await api('login', { username: user.value, password: pw.value, logoKey: await logoKey() }, { timeout: 120000 });
       if (r.mustChange) { setToken(r.token); return render(changePasswordView(pw.value)); }
       await afterLogin(r);
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
@@ -101,7 +102,7 @@ function changePasswordView(oldPw = '') {
     e.preventDefault(); err.hidden = true;
     if (n1.value !== n2.value) { err.textContent = 'Las contraseñas no coinciden'; err.hidden = false; return; }
     try {
-      const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value }, { timeout: 120000 });
+      const r = await api('changePassword', { oldPassword: old.value, newPassword: n1.value, logoKey: await logoKey() }, { timeout: 120000 });
       toast('Contraseña cambiada'); await afterLogin(r);
     } catch (ex) {
       err.textContent = ex.code === 'offline'
@@ -128,6 +129,7 @@ async function logout() {
 // Router
 // ---------------------------------------------------------------------
 function render(view) {
+  document.documentElement.classList.remove('boot-login');
   const r = root(); r.innerHTML = ''; r.appendChild(view);
 }
 

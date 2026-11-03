@@ -1,3 +1,4 @@
+import { icon } from '../svg.js';
 import { h, toast, modal, copyText, downloadBlob, confirmBox, promptBox, blobToBase64 } from '../ui.js';
 import { api } from '../api.js';
 import { idb } from '../db.js';
@@ -67,7 +68,7 @@ export function outputsStep(r, { onChanged }) {
         catch (e) { if (e.name !== 'AbortError') toast(e.message); }
       } else { downloadBlob(blob, m.fileName); toast('Este dispositivo no comparte archivos: se ha descargado el PDF.'); }
     });
-    box.appendChild(h('div', { class: 'card' }, h('h4', {}, '📄 PDF'),
+    box.appendChild(h('div', { class: 'card' }, h('h4', { class: 'h-ico' }, icon('file'), 'PDF'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn primary', onclick: (e) => sharePdf(e.target) }, 'Compartir PDF'),
         h('button', { class: 'btn', onclick: (e) => withPdf(e.target, ({ blob, model: m }) => downloadBlob(blob, m.fileName)) }, 'Descargar'),
@@ -91,7 +92,7 @@ export function outputsStep(r, { onChanged }) {
       const res = await api('sendEmail', { reportId: r.id, to: to.value, cc: cc.value, bcc: bcc.value, subject: subject.value, body: body.value, pdfBase64: await blobToBase64(blob), fileName: m.fileName }, { timeout: 120000 });
       toast(`Correo aceptado por Google (quedan ${res.remaining} hoy). "Aceptado" no garantiza que se haya entregado.`, 7000);
     });
-    box.appendChild(h('div', { class: 'card' }, h('h4', {}, '✉️ Correo (en inglés)'),
+    box.appendChild(h('div', { class: 'card' }, h('h4', { class: 'h-ico' }, icon('mail'), 'Correo (en inglés)'),
       h('div', { class: 'form-grid' },
         h('div', { class: 'field half' }, h('label', { class: 'label' }, 'Para'), to),
         h('div', { class: 'field half' }, h('label', { class: 'label' }, 'CC'), cc),
@@ -113,7 +114,7 @@ export function outputsStep(r, { onChanged }) {
     // ---------- WhatsApp ----------
     const phone = h('input', { inputmode: 'tel', placeholder: 'Opcional, con prefijo: 34600123456' });
     const wa = h('textarea', { rows: 10 }, whatsappText(model));
-    box.appendChild(h('div', { class: 'card' }, h('h4', {}, '💬 WhatsApp (en inglés)'),
+    box.appendChild(h('div', { class: 'card' }, h('h4', { class: 'h-ico' }, icon('chat'), 'WhatsApp (en inglés)'),
       h('div', { class: 'form-grid' }, h('div', { class: 'field half' }, h('label', { class: 'label' }, 'Teléfono'), phone), h('div', { class: 'field full' }, wa)),
       h('div', { class: 'row wrap mt' },
         h('button', { class: 'btn', onclick: () => copy(wa.value, 'Mensaje', 'whatsapp') }, 'Copiar mensaje'),

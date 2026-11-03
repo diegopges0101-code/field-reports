@@ -10,7 +10,18 @@ const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { deta
 // ---------------------------------------------------------------------
 // Arranque: datos de la empresa, usuarios, catálogo (con copia local)
 // ---------------------------------------------------------------------
-const applyBoot = (b) => Object.assign(state, { user: b.user, people: b.people, catalog: b.catalog, config: b.config, logo: b.logo });
+// El servidor no reenvía el logo si el dispositivo ya tiene el mismo (logo: null): se conserva el guardado
+const applyBoot = (b) => {
+  if (b.logo == null) { b.logo = state.logo || ''; if (!b.logo) b.logoKey = ''; }
+  Object.assign(state, { user: b.user, people: b.people, catalog: b.catalog, config: b.config, logo: b.logo, logoKey: b.logoKey || '' });
+};
+/** Clave del logo que ya tiene este dispositivo (para no volver a descargarlo). */
+export async function logoKey() {
+  if (state.logoKey && state.logo) return state.logoKey;
+  const c = await kv.get('boot');
+  if (c?.logo && c.logoKey) { state.logo = c.logo; state.logoKey = c.logoKey; return c.logoKey; }
+  return '';
+}
 
 /** Guarda los datos que llegan junto con el login (así no hace falta otra petición). */
 export async function applyBootData(b) { applyBoot(b); await kv.set('boot', b); bootFresh = Date.now(); }
@@ -22,13 +33,13 @@ export async function bootstrap({ cachedFirst = false } = {}) {
   if (cachedFirst && cached && getToken()) {
     applyBoot(cached);
     if (Date.now() - bootFresh < 60000) return true; // recién recibido con el login
-    api('bootstrap').then(async (b) => { applyBoot(b); await kv.set('boot', b); emit('boot-refreshed'); }).catch((e) => {
+    api('bootstrap', { logoKey: cached.logoKey || '' }).then(async (b) => { applyBoot(b); await kv.set('boot', b); emit('boot-refreshed'); }).catch((e) => {
       if (e.code === 'auth' || e.code === 'must_change') return; // api.js ya avisa a la app
     });
     return true;
   }
   try {
-    const b = await api('bootstrap');
+    const b = await api('bootstrap', { logoKey: await logoKey() });
     applyBoot(b);
     await kv.set('boot', b);
     return true;

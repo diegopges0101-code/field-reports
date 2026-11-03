@@ -1,3 +1,4 @@
+import { icon } from '../svg.js';
 import { h, toast, modal, fmtDateTime } from '../ui.js';
 import { api } from '../api.js';
 import { idb } from '../db.js';
@@ -116,7 +117,7 @@ export async function editorView(page, id, stepIdx) {
     markSteps();
     count.textContent = `${stepIdx + 1}/${tpl.steps.length}`;
     prevBtn.disabled = stepIdx === 0;
-    nextBtn.textContent = stepIdx >= tpl.steps.length - 1 ? 'Fin' : 'Siguiente →';
+    nextBtn.replaceChildren(...(stepIdx >= tpl.steps.length - 1 ? ['Fin'] : ['Siguiente', icon('next', { size: 17 })]));
     nextBtn.disabled = stepIdx >= tpl.steps.length - 1;
     const on = stepsNav.children[stepIdx];
     requestAnimationFrame(() => { stepsNav.scrollLeft = on.offsetLeft - (stepsNav.clientWidth - on.offsetWidth) / 2; });
@@ -130,11 +131,11 @@ export async function editorView(page, id, stepIdx) {
   }
 
   const count = h('span', { class: 'count' });
-  const prevBtn = h('button', { class: 'btn', onclick: () => stepIdx > 0 && goStep(stepIdx - 1) }, '← Anterior');
-  const nextBtn = h('button', { class: 'btn primary', onclick: () => stepIdx < tpl.steps.length - 1 && goStep(stepIdx + 1) }, 'Siguiente →');
+  const prevBtn = h('button', { class: 'btn', onclick: () => stepIdx > 0 && goStep(stepIdx - 1) }, icon('prev', { size: 17 }), 'Anterior');
+  const nextBtn = h('button', { class: 'btn primary', onclick: () => stepIdx < tpl.steps.length - 1 && goStep(stepIdx + 1) }, 'Siguiente', icon('next', { size: 17 }));
   page.append(
     h('div', { class: 'editor-head' },
-      h('a', { href: '#/', class: 'btn icon back', 'aria-label': 'Volver a informes' }, '←'),
+      h('a', { href: '#/', class: 'btn icon back', 'aria-label': 'Volver a informes' }, icon('back', { size: 20 })),
       h('div', { class: 'titles' }, headTitle, headSub),
       saveEl),
     banner, stepsNav, body,

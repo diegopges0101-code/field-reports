@@ -1,3 +1,4 @@
+import { icon } from './svg.js';
 // Pequeñas utilidades de interfaz (sin frameworks)
 export function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
@@ -35,7 +36,7 @@ export function modal(title, body, actions = []) {
   const back = h('div', { class: 'modal-back' });
   const close = () => back.remove();
   const box = h('div', { class: 'modal' },
-    h('div', { class: 'modal-head' }, h('strong', {}, title), h('button', { class: 'btn small ghost-dark', onclick: close, 'aria-label': 'Cerrar' }, '✕')),
+    h('div', { class: 'modal-head' }, h('strong', {}, title), h('button', { class: 'btn small ghost-dark', onclick: close, 'aria-label': 'Cerrar' }, icon('x', { size: 18 }))),
     h('div', { class: 'modal-body' }, body),
     actions.length ? h('div', { class: 'modal-foot' }, actions) : null);
   back.appendChild(box);

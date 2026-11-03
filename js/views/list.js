@@ -1,3 +1,4 @@
+import { icon } from '../svg.js';
 import { h, toast, confirmBox } from '../ui.js';
 import { api } from '../api.js';
 import { idb, kv } from '../db.js';
@@ -31,8 +32,8 @@ export async function listView(page) {
 
   page.append(
     h('div', { class: 'new-buttons' },
-      h('button', { class: 'big-btn survey', onclick: () => newReport('survey') }, '＋ SURVEY', h('small', {}, 'Visita previa')),
-      h('button', { class: 'big-btn install', onclick: () => newReport('installation') }, '＋ INSTALLATION', h('small', {}, 'Informe de instalación'))),
+      h('button', { class: 'big-btn survey', onclick: () => newReport('survey') }, h('span', { class: 'bb-ico' }, icon('survey', { size: 22 })), h('span', { class: 'bb-txt' }, 'Survey', h('small', {}, 'Visita previa')), icon('plus', { size: 18, cls: 'bb-plus' })),
+      h('button', { class: 'big-btn install', onclick: () => newReport('installation') }, h('span', { class: 'bb-ico' }, icon('install', { size: 22 })), h('span', { class: 'bb-txt' }, 'Installation', h('small', {}, 'Informe de instalación')), icon('plus', { size: 18, cls: 'bb-plus' }))),
     h('div', { class: 'filters' }, q,
       sel('type', [['', 'Todos los tipos'], ['survey', 'Survey'], ['installation', 'Installation']]),
       sel('status', [['', 'Activos'], ...Object.entries(STATUS_LABEL)]),
@@ -85,7 +86,7 @@ export async function listView(page) {
           h('span', { class: `badge st-${r.status}` }, STATUS_LABEL[r.status] || r.status)),
         h('div', { class: 'muted small' }, [TYPE_LABEL[r.type], r.number || 'nº pendiente', r.client, r.report_date].filter(Boolean).join(' · '),
           pendingIds.has(r.id) ? h('span', { class: 'badge warn tiny' }, 'por subir') : null)),
-      h('button', { class: 'btn small', title: 'Duplicar para un trabajo parecido', 'aria-label': 'Duplicar', onclick: () => duplicate(r.id) }, '⧉'))));
+      h('button', { class: 'btn small', title: 'Duplicar para un trabajo parecido', 'aria-label': 'Duplicar', onclick: () => duplicate(r.id) }, icon('copy', { size: 17 })))));
   }
 
   async function duplicate(id) {
