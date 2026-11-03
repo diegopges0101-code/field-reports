@@ -1,6 +1,6 @@
 // Service worker: la app se abre desde la memoria del móvil al instante (y sin cobertura),
 // y se actualiza sola en segundo plano. Sube este número al publicar cambios.
-const CACHE = 'field-reports-v2.4.1';
+const CACHE = 'field-reports-v2.4.2';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'vendor/pdf-lib.min.js',
   'js/app.js', 'js/api.js', 'js/config.js', 'js/db.js', 'js/english.js', 'js/fields.js', 'js/pdf.js',

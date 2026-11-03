@@ -97,6 +97,14 @@ export async function usersView(page) {
           h('div', { class: 'muted tiny' }, `Último acceso: ${fmtDateTime(u.last_login) || 'nunca'}`)),
         me ? null : toggle(u.active, (on) => upd({ active: on }, on ? 'Usuario activado' : 'Usuario desactivado'), { label: u.active ? 'Activo' : 'Inactivo' })),
       h('div', { class: 'ad-user-fields' },
+        h('div', {}, h('div', { class: 'sublabel' }, 'Nombre completo (sale en los informes)'),
+          h('input', { value: u.name || '', placeholder: 'ej. Diego Pérez', autocomplete: 'off', onchange: (e) => {
+            const v = e.target.value.trim();
+            if (!v) { e.target.value = u.name; return toast('El nombre no puede quedar vacío'); }
+            upd({ name: v }, 'Nombre guardado');
+          } })),
+        h('div', {}, h('div', { class: 'sublabel' }, 'Email (también sirve para entrar)'),
+          h('input', { type: 'email', value: u.email || '', placeholder: 'opcional', autocomplete: 'off', onchange: (e) => upd({ email: e.target.value.trim() }, 'Email guardado') })),
         h('div', {}, h('div', { class: 'sublabel' }, 'Rol'),
           h('select', { disabled: me, onchange: (e) => upd({ role: e.target.value }) }, Object.entries(ROLE).map(([k, v]) => h('option', { value: k, selected: k === u.role }, v)))),
         h('div', {}, h('div', { class: 'sublabel' }, 'Cargo'),
