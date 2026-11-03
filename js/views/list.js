@@ -79,7 +79,7 @@ export async function listView(page) {
     listBox.innerHTML = '';
     if (offline) listBox.appendChild(h('div', { class: 'warn' }, 'Sin conexión: se muestran los informes guardados en este dispositivo.'));
     if (!rows.length) listBox.appendChild(h('p', { class: 'muted' }, 'No hay informes.'));
-    rows.forEach((r) => listBox.appendChild(h('div', { class: 'list-row' },
+    rows.forEach((r) => listBox.appendChild(h('div', { class: 'list-row rep-row' },
       h('a', { href: `#/r/${r.id}`, class: 'grow' },
         h('div', { class: 'row between' },
           h('strong', { class: 'grow' }, [r.site_code, r.site_name].filter(Boolean).join(' – ') || '(sin sitio)'),
