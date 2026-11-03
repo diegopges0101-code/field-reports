@@ -58,6 +58,13 @@ export function formatDate(iso) {
 const clean = (s) => s.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim();
 const lc1 = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+/** Dirección completa en una línea: "12 Rue X, 01200 Champfromier, Ain, Auvergne-Rhône-Alpes (FR-01), France (FR)" */
+export function siteAddress(d) {
+    const v = (k) => String(d[k] ?? '').trim();
+    const region = v('region') ? v('region') + (v('region_code') ? ` (${v('region_code')})` : '') : v('region_code');
+    const country = v('country') ? v('country') + (v('country_code') ? ` (${v('country_code')})` : '') : v('country_code');
+    return [v('address'), [v('postcode'), v('city')].filter(Boolean).join(' '), region, country].filter(Boolean).join(', ');
+}
 export function buildDoc(ctx) {
     const { report, photos, people } = ctx;
     const d = report.data ?? {};
@@ -225,6 +232,7 @@ export function buildDoc(ctx) {
         [
             ['Site', [client, siteCode, siteName].filter(Boolean).join(' ')],
             ['GPS', (d.gps ?? '').trim()],
+            ['Address', siteAddress(d)],
             ['Installation', am.antenna ?? ''],
             ['Location', loc.join(', ')],
             ['Mount', mount],
@@ -373,6 +381,7 @@ export function buildDoc(ctx) {
         technicians: peopleNames('technicians'),
         supervisor: peopleNames('supervisor'),
         gps: (d.gps ?? '').trim(),
+        address: siteAddress(d),
         timeText: [d.start_time, d.end_time].filter(Boolean).join(' – '),
         objective,
         equipment: isSurvey ? [] : equipmentRows('equipment'),
@@ -405,8 +414,10 @@ export function emailBody(m, opts) {
         L.push(`Contract: ${m.contract}`);
     if (m.dateText)
         L.push(`Date: ${m.dateText}${m.timeText ? ` (${m.timeText})` : ''}`);
+    if (m.address)
+        L.push(`Address: ${m.address}`);
     if (m.gps)
-        L.push(`Location: ${m.gps}`);
+        L.push(`GPS: ${m.gps}`);
     if (m.technicians)
         L.push(`Technicians: ${m.technicians}`);
     if (m.supervisor)
@@ -439,8 +450,10 @@ export function whatsappText(m) {
     L.push(`Ref: ${m.number}${m.contract ? ` | Contract: ${m.contract}` : ''}`);
     if (m.dateText)
         L.push(`Date: ${m.dateText}${m.timeText ? ` (${m.timeText})` : ''}`);
+    if (m.address)
+        L.push(`Address: ${m.address}`);
     if (m.gps)
-        L.push(`Location: ${m.gps}`);
+        L.push(`GPS: ${m.gps}`);
     if (m.technicians)
         L.push(`Team: ${m.technicians}`);
     L.push('');

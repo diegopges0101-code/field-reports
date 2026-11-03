@@ -1,8 +1,9 @@
 import { icon } from './svg.js';
 // Dibuja los campos del formulario a partir de las plantillas (templates.js)
-import { h, uid, toast } from './ui.js';
+import { h, uid, toast, confirmBox } from './ui.js';
 import { photosField } from './photos.js';
 import { OPT } from './templates.js';
+import { reverseGeocode, parseCoords, GEO_KEYS } from './geo.js';
 
 /**
  * ctx = { data, set(key, value, rerender), people, catalog, readOnly, report }
@@ -32,7 +33,7 @@ export function renderField(f, ctx) {
     case 'time':
       return wrap(h('input', { type: f.type, value: v ?? '', disabled: ro, onchange: (e) => set(e.target.value) }));
     case 'gps':
-      return wrap(gpsInput(v ?? '', (val) => set(val), ro));
+      return wrap(gpsInput(v ?? '', (val) => set(val), ro, ctx));
     case 'toggle':
       return wrap(h('div', { class: 'seg' },
         h('button', { type: 'button', class: v === true ? 'on' : '', disabled: ro, onclick: () => set(v === true ? null : true, true) }, 'Sí'),
@@ -101,23 +102,46 @@ function peoplePicker(people, value0, allowOther, ro, onChange0) {
     allowOther ? h('input', { class: 'mt', placeholder: 'Otras personas (externos), separadas por comas', value: value.other || '', disabled: ro, oninput: (e) => onChange({ ...value, other: e.target.value }, false) }) : null);
 }
 
-function gpsInput(value, onChange, ro) {
-  const inp = h('input', { value, disabled: ro, placeholder: `43°44'09.03"N – 7°17'35.20"E`, oninput: (e) => onChange(e.target.value) });
+/** Rellena dirección, región y país a partir de las coordenadas (solo lo que esté vacío, o todo si se confirma) */
+async function fillAddress(ctx, lat, lon, { quiet = false } = {}) {
+  if (!navigator.onLine) { if (!quiet) toast('Sin conexión: la dirección se rellenará al pulsar GPS con cobertura'); return; }
+  let geo;
+  try { geo = await reverseGeocode(lat, lon); } catch { if (!quiet) toast('No se pudo obtener la dirección; escríbela a mano'); return; }
+  const d = ctx.data;
+  const found = GEO_KEYS.filter((k) => geo[k]);
+  const differs = found.filter((k) => String(d[k] ?? '').trim() && String(d[k]).trim() !== geo[k]);
+  let keys = found.filter((k) => !String(d[k] ?? '').trim());
+  if (differs.length && await confirmBox(`La dirección ya escrita no coincide con la del GPS:\n\n${geo.address ? geo.address + ', ' : ''}${geo.postcode} ${geo.city}, ${geo.country}\n\n¿Sustituirla?`, 'Sustituir')) keys = found;
+  if (!keys.length) { if (!quiet) toast('La dirección ya estaba rellenada'); return; }
+  keys.forEach((k, i) => ctx.set(k, geo[k], i === keys.length - 1));
+  toast(`Dirección rellenada: ${[geo.city, geo.country_code].filter(Boolean).join(', ')}`);
+}
+
+function gpsInput(value, onChange, ro, ctx) {
+  const inp = h('input', { value, disabled: ro, placeholder: `43°44'09.03"N – 7°17'35.20"E`, oninput: (e) => onChange(e.target.value),
+    // Coordenadas escritas o pegadas a mano: si la dirección está vacía, se busca sola
+    onchange: (e) => { const c = parseCoords(e.target.value); if (c && ctx && !GEO_KEYS.some((k) => String(ctx.data[k] ?? '').trim())) fillAddress(ctx, c.lat, c.lon, { quiet: true }); } });
   const dms = (dec, pos, neg) => {
     const a = Math.abs(dec); const d = Math.floor(a); const m = Math.floor((a - d) * 60);
     const s = ((a - d - m / 60) * 3600).toFixed(2);
     return `${d}°${String(m).padStart(2, '0')}'${s.padStart(5, '0')}"${dec >= 0 ? pos : neg}`;
   };
+  const idle = () => btn.replaceChildren(icon('pin'), 'GPS');
   const btn = h('button', {
-    type: 'button', class: 'btn small', disabled: ro, title: 'Usar mi posición',
+    type: 'button', class: 'btn small', disabled: ro, title: 'Usar mi posición y rellenar la dirección',
     onclick: () => {
       if (!navigator.geolocation) return toast('Este dispositivo no permite GPS');
-      btn.replaceChildren('Buscando…');
-      navigator.geolocation.getCurrentPosition((p) => {
-        inp.value = `${dms(p.coords.latitude, 'N', 'S')} – ${dms(p.coords.longitude, 'E', 'W')}`;
-        onChange(inp.value); btn.replaceChildren(icon('pin'), 'GPS');
-        toast(`Ubicación obtenida (±${Math.round(p.coords.accuracy)} m)`);
-      }, (e) => { btn.replaceChildren(icon('pin'), 'GPS'); toast('No se pudo obtener la ubicación: ' + e.message); }, { enableHighAccuracy: true, timeout: 20000 });
+      btn.disabled = true; btn.replaceChildren('Buscando…');
+      navigator.geolocation.getCurrentPosition(async (p) => {
+        const { latitude: lat, longitude: lon, accuracy } = p.coords;
+        inp.value = `${dms(lat, 'N', 'S')} – ${dms(lon, 'E', 'W')}`;
+        onChange(inp.value);
+        toast(`Ubicación obtenida (±${Math.round(accuracy)} m). Buscando dirección…`);
+        btn.replaceChildren('Dirección…');
+        if (ctx) await fillAddress(ctx, lat, lon);
+        btn.disabled = false; idle();
+      }, (e) => { btn.disabled = false; idle(); toast(e.code === 1 ? 'Permite la ubicación al navegador para usar el GPS' : 'No se pudo obtener la ubicación: ' + e.message); },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 });
     },
   }, icon('pin'), 'GPS');
   return h('div', { class: 'row' }, inp, btn);

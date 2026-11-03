@@ -8,7 +8,7 @@ export const STATUS_LABEL = { draft: 'Borrador', ready_for_review: 'Para revisar
 export const TYPE_LABEL = { survey: 'Survey', installation: 'Installation Report' };
 
 // Campos que NO se copian al duplicar (propios de cada sitio / intervención)
-const NOT_COPIED = ['site_code', 'site_name', 'contract', 'gps', 'client_contact', 'recipient_email', 'start_time', 'end_time',
+const NOT_COPIED = ['site_code', 'site_name', 'contract', 'gps', 'address', 'postcode', 'city', 'region', 'region_code', 'country', 'country_code', 'client_contact', 'recipient_email', 'start_time', 'end_time',
   'ip', 'mask', 'gateway', 'dns', 'sl_status', 'sl_obstructions', 'sl_down', 'sl_up', 'sl_latency', 'sl_notes',
   'pp_tests', 'pp_notes', 'final_status', 'pending', 'issues', 'final_notes', 'feasibility', 'conditions', 'conclusion',
   'sky_view', 'sl_tests', 'antenna_notes', 'route_notes', 'access_notes', 'destination_notes', 'onsite_notes', 'onsite_equipment'];

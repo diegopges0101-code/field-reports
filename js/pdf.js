@@ -175,7 +175,8 @@ export async function buildPdf(model, opts) {
       model.technicians ? [{ text: 'Technicians: ', bold: true }, { text: model.technicians }] : null,
       model.supervisor ? [{ text: 'Supervisor: ', bold: true }, { text: model.supervisor }] : null,
       model.dateText ? [{ text: 'Date: ', bold: true }, { text: model.dateText + (model.timeText ? ` (${model.timeText})` : '') }] : null,
-      model.gps ? [{ text: 'Location: ', bold: true }, { text: model.gps }] : null,
+      model.address ? [{ text: 'Address: ', bold: true }, { text: model.address }] : null,
+      model.gps ? [{ text: 'GPS: ', bold: true }, { text: model.gps }] : null,
     ].filter(Boolean));
     if (model.kind === 'survey') col(365, 240, 'Purpose:', model.objective.map((o) => [{ text: o, bold: true }]));
     else {

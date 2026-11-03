@@ -592,3 +592,4 @@ input[type=checkbox], input[type=radio] { accent-color: var(--ink); box-shadow: 
   .ad-list:has(.ad-item) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 }
 .ad-logo .stack { align-items: flex-start; }
+.modal-body p { white-space: pre-line; }
