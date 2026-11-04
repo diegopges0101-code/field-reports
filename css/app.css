@@ -593,3 +593,23 @@ input[type=checkbox], input[type=radio] { accent-color: var(--ink); box-shadow: 
 }
 .ad-logo .stack { align-items: flex-start; }
 .modal-body p { white-space: pre-line; }
+
+/* Editor de fotos: pegatinas de equipos */
+.pe-stickers { flex: 1 1 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
+.pe-stickers::-webkit-scrollbar { display: none; }
+.pe .stk { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 68px; min-height: 66px; padding: 4px 2px; font-size: 9.5px; line-height: 1.1; white-space: normal; text-align: center; background: #18181b; }
+.pe .stk canvas { display: block; background: radial-gradient(circle at 50% 40%, #3f3f46, #18181b 70%); border-radius: 8px; }
+.pe .stk.on { background: #fafafa; color: #09090b; border-color: #fafafa; }
+.pe .stk.on canvas { background: radial-gradient(circle at 50% 40%, #e4e4e7, #d4d4d8 70%); }
+.pe .stk-ctl { flex-wrap: wrap; }
+.pe .stk-ctl button { min-width: 42px; font-size: 18px; }
+.pe .stk-ctl button:last-child { font-size: 13px; }
+@media (orientation: landscape) and (max-height: 560px) {
+  .pe .stk { width: 56px; min-height: 54px; font-size: 8.5px; }
+  .pe .stk-ctl button { min-width: 34px; font-size: 15px; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .pe-props:not(.pe-cap) { max-height: 52vh; overflow-y: auto; align-content: flex-start; }
+  .pe-top button { padding: 0 7px; font-size: 13px; min-width: 0; }
+  .pe-top .row { gap: 4px; }
+}
