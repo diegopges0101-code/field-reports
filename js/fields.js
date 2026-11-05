@@ -4,6 +4,7 @@ import { h, uid, toast, confirmBox } from './ui.js';
 import { photosField } from './photos.js';
 import { OPT } from './templates.js';
 import { reverseGeocode, parseCoords, GEO_KEYS } from './geo.js';
+import { aiFieldButton } from './ai.js';
 
 /**
  * ctx = { data, set(key, value, rerender), people, catalog, readOnly, report }
@@ -25,7 +26,7 @@ export function renderField(f, ctx) {
     case 'textarea': {
       const ta = h('textarea', { rows: 3, placeholder: f.placeholder || 'Puedes escribir o dictar en español; se traducirá al inglés', disabled: ro, oninput: (e) => set(e.target.value) }, v ?? '');
       const mic = ro ? null : micButton(ta, (txt) => set(txt));
-      return wrap(h('div', { class: 'with-mic' }, ta, mic, mic?._live));
+      return wrap(h('div', { class: 'with-mic' }, ta, mic, ro ? null : aiFieldButton(ctx, f), mic?._live));
     }
     case 'number':
       return wrap(h('input', { type: 'number', inputmode: 'decimal', step: 'any', value: v ?? '', disabled: ro, oninput: (e) => set(e.target.value === '' ? '' : Number(e.target.value)) }));

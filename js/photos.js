@@ -3,6 +3,7 @@ import { icon } from './svg.js';
 import { h, toast, compressImage, confirmBox } from './ui.js';
 import { listPhotos, addPhoto, updatePhoto, deletePhoto, ensurePhotoData } from './store.js';
 import { openPhotoEditor, thumbFor } from './annot.js';
+import { openAssistant, aiEnabled } from './ai.js';
 
 export function photosField(report, category, ro) {
   const grid = h('div', { class: 'photos' }, h('div', { class: 'skel', style: { aspectRatio: '4/3' } }), h('div', { class: 'skel', style: { aspectRatio: '4/3' } }));
@@ -32,6 +33,7 @@ export function photosField(report, category, ro) {
         ro ? null : h('div', { class: 'tools' },
           h('button', { type: 'button', class: 'btn small', title: 'Mover a la izquierda', 'aria-label': 'Mover a la izquierda', onclick: () => move(i, -1) }, '◀'),
           h('button', { type: 'button', class: 'btn small', title: 'Editar / marcar', 'aria-label': 'Editar', disabled: !p.dataUrl, onclick: () => edit(p) }, icon('edit', { size: 17 })),
+          aiEnabled() ? h('button', { type: 'button', class: 'btn small ai-ph-btn', title: 'Replanteo con IA', 'aria-label': 'Imagen con IA', disabled: !p.dataUrl, onclick: () => openAssistant({ report, mode: 'image', photo: p, onAddImage: onFiles }) }, '✦') : null,
           h('button', { type: 'button', class: 'btn small danger', title: 'Borrar', 'aria-label': 'Borrar', onclick: () => remove(p) }, icon('trash', { size: 17 })),
           h('button', { type: 'button', class: 'btn small', title: 'Mover a la derecha', 'aria-label': 'Mover a la derecha', onclick: () => move(i, 1) }, '▶'))));
     });

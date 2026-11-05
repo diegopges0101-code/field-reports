@@ -230,7 +230,10 @@ export async function companyView(page) {
     section('Flujo de trabajo', null,
       h('div', { class: 'ad-row-switch' },
         h('div', { class: 'grow' }, h('strong', {}, 'Exigir aprobación antes de emitir'), h('div', { class: 'muted small' }, 'Un supervisor o administrador debe aprobar el informe antes de emitirlo.')),
-        toggle(String(c.require_approval) === 'true', (on) => { c.require_approval = String(on); mark(); }))),
+        toggle(String(c.require_approval) === 'true', (on) => { c.require_approval = String(on); mark(); })),
+      h('div', { class: 'ad-row-switch' },
+        h('div', { class: 'grow' }, h('strong', {}, 'Asistente IA (ChatGPT / Gemini)'), h('div', { class: 'muted small' }, 'Botones ✦ para redactar textos y conclusiones y generar imágenes de replanteo con la cuenta de ChatGPT o Gemini de cada técnico. Envía datos técnicos a un servicio externo (nunca emails, teléfonos, IP ni nº de serie).')),
+        toggle(String(c.ai_enabled ?? 'true') !== 'false', (on) => { c.ai_enabled = String(on); mark(); }))),
     iconSection(),
     bar);
 

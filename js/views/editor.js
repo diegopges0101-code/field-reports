@@ -7,6 +7,7 @@ import { TEMPLATES, missingRequired } from '../templates.js';
 import { renderField } from '../fields.js';
 import { getTranslatables, trState } from '../english.js';
 import { outputsStep } from './outputs.js';
+import { openAssistant, aiEnabled } from '../ai.js';
 import { STATUS_LABEL, TYPE_LABEL } from './list.js';
 
 export function canEdit(r) {
@@ -137,6 +138,7 @@ export async function editorView(page, id, stepIdx) {
     h('div', { class: 'editor-head' },
       h('a', { href: '#/', class: 'btn icon back', 'aria-label': 'Volver a informes' }, icon('back', { size: 20 })),
       h('div', { class: 'titles' }, headTitle, headSub),
+      !readOnly && aiEnabled() ? h('button', { class: 'btn icon ai-head', title: 'Asistente IA (ChatGPT / Gemini)', 'aria-label': 'Asistente IA', onclick: () => openAssistant({ ctx, mode: 'conclusion' }) }, '✦') : null,
       saveEl),
     banner, stepsNav, body,
     h('div', { class: 'bottom-bar' }, prevBtn, count, nextBtn));
