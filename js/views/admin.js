@@ -128,7 +128,7 @@ export async function usersView(page) {
 const KINDS = [['antenna', 'Antenas'], ['mount', 'Monturas'], ['router', 'Routers'], ['cable', 'Cables'], ['accessory', 'Accesorios'], ['sim', 'SIM']];
 const FAMILY_LABEL = { standard: 'Standard', standard_actuated: 'Standard Actuated', mini: 'Mini', performance_gen3: 'Performance Gen 3', flat_hp: 'Flat High Perf.', high_performance: 'High Performance', enterprise: 'Enterprise' };
 const FAMILIES = Object.keys(FAMILY_LABEL);
-const MANUFACTURERS = ['Starlink', 'Peplink', 'SIM', 'Third-party', 'Other'];
+const MANUFACTURERS = ['Starlink', 'Peplink', 'OneWeb', 'VSAT', 'TVRO', 'SIM', 'Third-party', 'Other'];
 let kind = 'antenna';
 
 export async function catalogView(page) {

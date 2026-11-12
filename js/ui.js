@@ -1,3 +1,4 @@
+import { locale } from './i18n.js';
 import { icon } from './svg.js';
 // Pequeñas utilidades de interfaz (sin frameworks)
 export function h(tag, props = {}, ...children) {
@@ -70,7 +71,7 @@ export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date
 export function fmtDateTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  return isNaN(d) ? iso : d.toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export async function copyText(text) {

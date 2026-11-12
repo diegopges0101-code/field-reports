@@ -94,6 +94,7 @@ export async function listView(page) {
     if (!src) { try { src = await api('getReport', { id }); } catch (e) { return toast(e.message); } }
     if (!(await confirmBox('Se creará un informe nuevo con los mismos equipos y opciones, sin sitio, números de serie, IP, pruebas ni fotos. ¿Continuar?', 'Duplicar'))) return;
     const d = JSON.parse(JSON.stringify(src.data));
+    d.input_lang = src.data.input_lang ?? 'es'; // el duplicado conserva el idioma en que se escribió
     NOT_COPIED.forEach((k) => delete d[k]);
     d.date = new Date().toISOString().slice(0, 10);
     d.technicians = { ids: [state.user.id], other: '' };

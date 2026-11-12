@@ -3,6 +3,7 @@ import { api, ApiError, getToken } from './api.js';
 import { idb, kv } from './db.js';
 import { TEMPLATES, initialData } from './templates.js';
 import { uid } from './ui.js';
+import { lang } from './i18n.js';
 
 export const state = { user: null, people: [], catalog: [], config: {}, logo: '', syncing: false, lastError: '' };
 const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -55,7 +56,7 @@ export async function bootstrap({ cachedFirst = false } = {}) {
 export async function createReport(type, data) {
   const r = {
     id: uid(), type, number: '', status: 'draft', version: 0,
-    data: data || initialData(TEMPLATES[type], state.user.id), english: {},
+    data: { input_lang: lang(), ...(data || initialData(TEMPLATES[type], state.user.id)) }, english: {},
     created_by: state.user.id, dirty: true, isNew: true, updated_local: Date.now(),
   };
   await idb.put('reports', r);

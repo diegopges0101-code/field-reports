@@ -8,6 +8,7 @@ import { renderField } from '../fields.js';
 import { getTranslatables, trState } from '../english.js';
 import { outputsStep } from './outputs.js';
 import { openAssistant, aiEnabled } from '../ai.js';
+import { lang, needsTranslation } from '../i18n.js';
 import { STATUS_LABEL, TYPE_LABEL } from './list.js';
 
 export function canEdit(r) {
@@ -20,7 +21,9 @@ export function canEdit(r) {
 export async function editorView(page, id, stepIdx) {
   let r = await loadReport(id);
   if (!r) { page.appendChild(h('div', { class: 'error' }, 'Informe no disponible sin conexión.')); return; }
-  const tpl = TEMPLATES[r.type];
+  const tpl0 = TEMPLATES[r.type];
+  // El paso "Revisar inglés" solo existe si el informe se escribe en otro idioma
+  const tpl = { ...tpl0, get steps() { return needsTranslation(r) ? tpl0.steps : tpl0.steps.filter((s) => s.id !== 'english'); } };
   stepIdx = Math.min(stepIdx, tpl.steps.length - 1);
   const readOnly = !canEdit(r);
 
@@ -92,7 +95,10 @@ export async function editorView(page, id, stepIdx) {
   const ctx = {
     get data() { return r.data; },
     set: (key, value, rerender) => {
-      r.data = { ...r.data, [key]: value };
+      // Si se escribe con la app en español o portugués, el informe pasa a necesitar traducción
+      const flip = lang() !== 'en' && (r.data.input_lang ?? 'es') === 'en';
+      r.data = { ...r.data, [key]: value, ...(flip ? { input_lang: lang() } : {}) };
+      if (flip) rerender = true;
       saveLocal(r);
       if (rerender) drawStep();
       else markSteps();

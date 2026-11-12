@@ -10,6 +10,7 @@ import { state, listPhotos } from './store.js';
 import { STICKERS } from './stickers.js';
 import { renderAnnotated } from './annot.js';
 import { icon } from './svg.js';
+import { tr, lang } from './i18n.js';
 
 const LS = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };
 
@@ -25,93 +26,145 @@ const NEVER = new Set(['client_contact', 'recipient_email', 'technicians', 'supe
 const CLIENT_DATA = new Set(['client', 'site_code', 'site_name', 'address', 'postcode']);
 const SKIP_TYPES = new Set(['info', 'photos', 'people']);
 
-const optLabel = (f, v) => (f.options || []).find((o) => o.v === v)?.es || v;
+// ---------- textos de las instrucciones, en el idioma de la app ----------
+const P = {
+  es: {
+    langName: 'español', mount: 'montura', section: 'tramo', total: 'total', antenna: 'antena', obstructions: 'obstrucciones', down: 'Mbps bajada', up: 'Mbps subida',
+    yes: 'Sí', no: 'No', proposed: '(posición propuesta)', cable: 'Recorrido de cable', dashed: 'discontinuo', from: 'desde', to: 'hasta', number: 'Número', photo: 'Foto', marks: 'Marcas',
+    docSurvey: 'Survey (visita técnica previa) para una instalación de antena/comunicaciones', docInstall: 'Informe de instalación de antena/comunicaciones', docType: 'Tipo de documento', place: 'Ubicación',
+    photosTitle: '[Fotos y lo marcado en ellas]', survey: 'survey', install: 'informe de instalación',
+    rules: 'Usa SOLO los datos que te doy: no inventes medidas, resultados, pruebas ni equipos. Si falta algún dato importante, indícalo al final entre corchetes.',
+    role: 'Eres un técnico experto en instalaciones de antenas satélite (Starlink, OneWeb, VSAT, TVRO) y routers Peplink que redacta informes profesionales.',
+    field: (l) => `Redacta el texto del campo «${l}» de este informe. Escribe en español, en tono técnico, claro y profesional, con frases cortas (máximo 5-6 frases o una lista breve si encaja mejor).`,
+    already: 'Lo que ya he escrito (mejóralo y complétalo, sin perder información):', hints: 'Indicaciones del técnico:', only: 'Responde SOLO con el texto final, sin títulos ni comentarios.', data: 'DATOS DEL INFORME:',
+    concl: (k) => `Con los datos de este ${k}, redacta los siguientes apartados en español, en tono técnico y profesional.`,
+    format: 'Responde EXACTAMENTE con este formato (un título por apartado, sin texto antes ni después):', text: '(texto)',
+    review: 'Revisa este informe y dime qué falta o qué se podría mejorar.', answerIn: 'Responde en español.', tech: 'Contexto técnico:', default: 'la instalación propuesta',
+    imgEdit: (d) => `Edita la foto adjunta para hacer un replanteo fotorrealista de la instalación: ${d}.\nMantén la foto igual (mismo encuadre, luz, perspectiva y escala); añade solo lo indicado, con aspecto real y bien integrado. Si la foto tiene marcas o dibujos encima, úsalos como guía de dónde va cada cosa y elimínalos en el resultado. No añadas textos, logotipos ni marcas de agua.`,
+    imgNew: (d) => `Genera una imagen fotorrealista para un informe técnico: ${d}.\nAspecto de foto real, a escala y sin textos, logotipos ni marcas de agua.`,
+  },
+  en: {
+    langName: 'English', mount: 'mount', section: 'section', total: 'total', antenna: 'antenna', obstructions: 'obstructions', down: 'Mbps down', up: 'Mbps up',
+    yes: 'Yes', no: 'No', proposed: '(proposed position)', cable: 'Cable route', dashed: 'dashed', from: 'from', to: 'to', number: 'Number', photo: 'Photo', marks: 'Marks',
+    docSurvey: 'Survey (technical site visit) for an antenna/communications installation', docInstall: 'Antenna/communications installation report', docType: 'Document type', place: 'Location',
+    photosTitle: '[Photos and what is marked on them]', survey: 'survey', install: 'installation report',
+    rules: 'Use ONLY the data I give you: do not invent measurements, results, tests or equipment. If an important piece of data is missing, say so at the end in square brackets.',
+    role: 'You are a technician expert in satellite antenna installations (Starlink, OneWeb, VSAT, TVRO) and Peplink routers who writes professional reports.',
+    field: (l) => `Write the text for the field «${l}» of this report. Write in English, in a technical, clear and professional tone, with short sentences (at most 5-6 sentences or a short list if it fits better).`,
+    already: 'What I have already written (improve and complete it, without losing information):', hints: 'Instructions from the technician:', only: 'Answer ONLY with the final text, without headings or comments.', data: 'REPORT DATA:',
+    concl: (k) => `With the data of this ${k}, write the following sections in English, in a technical and professional tone.`,
+    format: 'Answer EXACTLY in this format (one heading per section, no text before or after):', text: '(text)',
+    review: 'Review this report and tell me what is missing or what could be improved.', answerIn: 'Answer in English.', tech: 'Technical context:', default: 'the proposed installation',
+    imgEdit: (d) => `Edit the attached photo to make a photorealistic mock-up of the installation: ${d}.\nKeep the photo the same (same framing, light, perspective and scale); add only what is described, looking real and well integrated. If the photo has marks or drawings on it, use them as a guide for where each thing goes and remove them from the result. Do not add text, logos or watermarks.`,
+    imgNew: (d) => `Generate a photorealistic image for a technical report: ${d}.\nIt should look like a real photo, to scale, with no text, logos or watermarks.`,
+  },
+  pt: {
+    langName: 'português', mount: 'suporte', section: 'troço', total: 'total', antenna: 'antena', obstructions: 'obstruções', down: 'Mbps download', up: 'Mbps upload',
+    yes: 'Sim', no: 'Não', proposed: '(posição proposta)', cable: 'Percurso do cabo', dashed: 'tracejado', from: 'desde', to: 'até', number: 'Número', photo: 'Foto', marks: 'Marcas',
+    docSurvey: 'Survey (visita técnica prévia) para uma instalação de antena/comunicações', docInstall: 'Relatório de instalação de antena/comunicações', docType: 'Tipo de documento', place: 'Localização',
+    photosTitle: '[Fotos e o que está marcado nelas]', survey: 'survey', install: 'relatório de instalação',
+    rules: 'Use APENAS os dados que lhe dou: não invente medidas, resultados, testes nem equipamentos. Se faltar algum dado importante, indique-o no fim entre parênteses retos.',
+    role: 'É um técnico especialista em instalações de antenas de satélite (Starlink, OneWeb, VSAT, TVRO) e routers Peplink que redige relatórios profissionais.',
+    field: (l) => `Redija o texto do campo «${l}» deste relatório. Escreva em português, num tom técnico, claro e profissional, com frases curtas (no máximo 5-6 frases ou uma lista breve se for mais adequado).`,
+    already: 'O que já escrevi (melhore e complete, sem perder informação):', hints: 'Indicações do técnico:', only: 'Responda APENAS com o texto final, sem títulos nem comentários.', data: 'DADOS DO RELATÓRIO:',
+    concl: (k) => `Com os dados deste ${k}, redija as seguintes secções em português, num tom técnico e profissional.`,
+    format: 'Responda EXATAMENTE neste formato (um título por secção, sem texto antes nem depois):', text: '(texto)',
+    review: 'Reveja este relatório e diga-me o que falta ou o que se pode melhorar.', answerIn: 'Responda em português.', tech: 'Contexto técnico:', default: 'a instalação proposta',
+    imgEdit: (d) => `Edite a foto anexa para fazer uma simulação fotorrealista da instalação: ${d}.\nMantenha a foto igual (mesmo enquadramento, luz, perspetiva e escala); acrescente apenas o indicado, com aspeto real e bem integrado. Se a foto tiver marcas ou desenhos por cima, use-os como guia de onde fica cada coisa e elimine-os no resultado. Não acrescente textos, logótipos nem marcas de água.`,
+    imgNew: (d) => `Gere uma imagem fotorrealista para um relatório técnico: ${d}.\nAspeto de foto real, à escala e sem textos, logótipos nem marcas de água.`,
+  },
+};
+const L = () => P[lang()] || P.en;
+
+const optLabel = (f, v) => tr((f.options || []).find((o) => o.v === v)?.es || v);
 const other = (d, f, v) => (v === '__other' ? d[`${f.key}_other`] || '' : v);
 const kindEs = { antenna: 'Antena', router: 'Router', cable: 'Cable', accessory: 'Accesorio', sim: 'Tarjeta SIM' };
+const manOf = (e) => (e.manufacturer === 'Other' ? e.manufacturerOther : (['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : ''));
 
 function valueText(f, v, d) {
   if (v == null || v === '') return '';
+  const t = L();
   switch (f.type) {
     case 'select': return optLabel(f, other(d, f, v));
     case 'catalogSelect': return other(d, f, v);
-    case 'toggle': return v === true ? 'Sí' : v === false ? 'No' : '';
+    case 'toggle': return v === true ? t.yes : v === false ? t.no : '';
     case 'number': return `${v}${f.unit ? ' ' + f.unit : ''}`;
     case 'chips': return [...(v.values || []).map((x) => optLabel(f, x)), v.other].filter(Boolean).join(', ');
-    case 'antennaMount': return [v.antenna, v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(' – montura: ');
-    case 'equipment': return (v || []).map((e) => [kindEs[e.kind] || e.kind, e.model === '__other' ? e.modelOther : e.model, e.mount && `montura ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes].filter(Boolean).join(' ')).filter(Boolean).join('; ');
-    case 'segments': { const t = (v || []).reduce((a, s) => a + (Number(s.length) || 0), 0); return (v || []).map((s) => `${s.desc || 'tramo'} ${s.length ?? '?'} m`).join(', ') + (t ? ` (total ${t} m)` : ''); }
+    case 'antennaMount': return [[v.system === '__other' ? v.systemOther : v.system, v.antenna].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${t.mount}: `);
+    case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.model === '__other' ? e.modelOther : e.model, e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+    case 'segments': { const tot = (v || []).reduce((a, s) => a + (Number(s.length) || 0), 0); return (v || []).map((s) => `${s.desc || t.section} ${s.length ?? '?'} m`).join(', ') + (tot ? ` (${t.total} ${tot} m)` : ''); }
     case 'antennaTests': {
       const ants = (d.equipment || []).filter((e) => e.kind === 'antenna');
-      return Object.entries(v || {}).map(([k, t], i) => {
+      return Object.entries(v || {}).map(([k, x], i) => {
         const n = ants.findIndex((a) => a.id === k);
-        return `antena ${n >= 0 ? n + 1 : i + 1}: ${[t.status, t.obstructions && `obstrucciones ${t.obstructions}`, t.down && `${t.down} Mbps bajada`, t.up && `${t.up} Mbps subida`, t.latency && `${t.latency} ms`, t.notes].filter(Boolean).join(', ')}`;
+        return `${t.antenna} ${n >= 0 ? n + 1 : i + 1}: ${[x.status, x.obstructions && `${t.obstructions} ${x.obstructions}`, x.down && `${x.down} ${t.down}`, x.up && `${x.up} ${t.up}`, x.latency && `${x.latency} ms`, x.notes].filter(Boolean).join(', ')}`;
       }).join('; ');
     }
     default: return String(v).trim();
   }
 }
 
-const ANN_ES = { callout: 'Señal con texto', route: 'Recorrido de cable', arrow: 'Flecha', line: 'Línea', rect: 'Recuadro', circle: 'Círculo', number: 'Número', text: 'Texto', sticker: 'Equipo dibujado' };
+const ANN_ES = { callout: 'Línea+texto', arrow: 'Flecha', line: 'Línea', rect: 'Cuadrado', circle: 'Círculo', text: 'Texto' };
 function annotText(a, all) {
-  const name = (id) => { const s = all.find((x) => x.id === id); return s ? STICKERS[s.kind]?.name : null; };
-  if (a.type === 'sticker') return `${STICKERS[a.kind]?.name || 'Equipo'}${a.ghost ? ' (posición propuesta)' : ''}${a.text ? ` «${a.text}»` : ''}`;
+  const t = L();
+  const name = (id) => { const s = all.find((x) => x.id === id); return s ? tr(STICKERS[s.kind]?.name) : null; };
+  if (a.type === 'sticker') return `${tr(STICKERS[a.kind]?.name || 'Equipo')}${a.ghost ? ' ' + t.proposed : ''}${a.text ? ` «${a.text}»` : ''}`;
   if (a.type === 'route') {
-    const L = String(a.lengths || '').split(/[,;]/).map((x) => parseFloat(x)).filter((x) => !isNaN(x));
+    const len = String(a.lengths || '').split(/[,;]/).map((x) => parseFloat(x)).filter((x) => !isNaN(x));
     const from = a.links?.v0 && name(a.links.v0.s), last = a.links?.[`v${(a.pts || []).length - 1}`], to = last && name(last.s);
-    return `Recorrido de cable${L.length ? ` ${L.join(' m + ')} m (total ${L.reduce((x, y) => x + y, 0)} m)` : ''}${a.dashed ? ' discontinuo' : ''}${from ? ` desde ${from}` : ''}${to ? ` hasta ${to}` : ''}${a.text ? ` «${a.text}»` : ''}`;
+    return `${t.cable}${len.length ? ` ${len.join(' m + ')} m (${t.total} ${len.reduce((x, y) => x + y, 0)} m)` : ''}${a.dashed ? ' ' + t.dashed : ''}${from ? ` ${t.from} ${from}` : ''}${to ? ` ${t.to} ${to}` : ''}${a.text ? ` «${a.text}»` : ''}`;
   }
-  if (a.type === 'number') return `Número ${a.n}${a.text ? ` «${a.text}»` : ''}`;
-  return a.text ? `${ANN_ES[a.type] || a.type} «${a.text}»` : '';
+  if (a.type === 'number') return `${t.number} ${a.n}${a.text ? ` «${a.text}»` : ''}`;
+  return a.text ? `${tr(ANN_ES[a.type] || a.type)} «${a.text}»` : '';
 }
 
-/** Resumen del informe en español para dar contexto a la IA */
+/** Resumen del informe, en el idioma de la app, para dar contexto a la IA */
 export function reportContext(r, photos = [], { hideClient = false } = {}) {
-  const t = TEMPLATES[r.type], d = r.data || {};
-  const L = [`Tipo de documento: ${r.type === 'survey' ? 'Survey (visita técnica previa) para una instalación Starlink/Peplink' : 'Informe de instalación Starlink/Peplink'}.`];
+  const tpl = TEMPLATES[r.type], d = r.data || {}, t = L();
+  const out = [`${t.docType}: ${r.type === 'survey' ? t.docSurvey : t.docInstall}.`];
   const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
-  if (place) L.push(`Ubicación: ${place}.`);
-  for (const s of t.steps) {
+  if (place) out.push(`${t.place}: ${place}.`);
+  for (const s of tpl.steps) {
     const rows = [];
     for (const f of s.fields) {
       if (SKIP_TYPES.has(f.type) || NEVER.has(f.key) || (hideClient && CLIENT_DATA.has(f.key)) || ['city', 'region', 'region_code', 'country', 'country_code'].includes(f.key)) continue;
       if (f.showIf && !f.showIf(d)) continue;
       const txt = valueText(f, d[f.key], d);
-      if (txt) rows.push(`- ${f.label}: ${txt}`);
+      if (txt) rows.push(`- ${tr(f.label)}: ${txt}`);
     }
-    if (rows.length) L.push(`\n[${s.title}]`, ...rows);
+    if (rows.length) out.push(`\n[${tr(s.title)}]`, ...rows);
   }
   const ph = photos.filter((p) => p.caption || p.annots?.length);
   if (ph.length) {
-    L.push('\n[Fotos y lo marcado en ellas]');
+    out.push('\n' + t.photosTitle);
     photos.forEach((p, i) => {
       const marks = (p.annots || []).map((a) => annotText(a, p.annots)).filter(Boolean);
-      if (p.caption || marks.length) L.push(`- Foto ${i + 1}${p.category ? ` (${p.category.toLowerCase()})` : ''}${p.caption ? `: «${p.caption}»` : ''}${marks.length ? `. Marcas: ${marks.join('; ')}` : ''}`);
+      if (p.caption || marks.length) out.push(`- ${t.photo} ${i + 1}${p.category ? ` (${p.category.toLowerCase()})` : ''}${p.caption ? `: «${p.caption}»` : ''}${marks.length ? `. ${t.marks}: ${marks.join('; ')}` : ''}`);
     });
   }
-  return L.join('\n');
+  return out.join('\n');
 }
-
-const RULES = 'Usa SOLO los datos que te doy: no inventes medidas, resultados, pruebas ni equipos. Si falta algún dato importante, indícalo al final entre corchetes.';
-const ROLE = 'Eres un técnico experto en instalaciones de Starlink y routers Peplink que redacta informes profesionales.';
 
 function fieldPrompt(r, field, current, extra, ctxText) {
-  return `${ROLE}\nRedacta el texto del campo «${field.label}» de este informe. Escribe en español, en tono técnico, claro y profesional, con frases cortas (máximo 5-6 frases o una lista breve si encaja mejor). ${RULES}\n` +
-    (current ? `\nLo que ya he escrito (mejóralo y complétalo, sin perder información):\n«${current}»\n` : '') +
-    (extra ? `\nIndicaciones del técnico: ${extra}\n` : '') +
-    `\nResponde SOLO con el texto final, sin títulos ni comentarios.\n\nDATOS DEL INFORME:\n${ctxText}`;
+  const t = L();
+  return `${t.role}\n${t.field(tr(field.label))} ${t.rules}\n` +
+    (current ? `\n${t.already}\n«${current}»\n` : '') +
+    (extra ? `\n${t.hints} ${extra}\n` : '') +
+    `\n${t.only}\n\n${t.data}\n${ctxText}`;
 }
 function conclusionPrompt(r, fields, extra, ctxText) {
-  return `${ROLE}\nCon los datos de este ${r.type === 'survey' ? 'survey' : 'informe de instalación'}, redacta los siguientes apartados en español, en tono técnico y profesional. ${RULES}\n` +
-    (extra ? `\nIndicaciones del técnico: ${extra}\n` : '') +
-    `\nResponde EXACTAMENTE con este formato (un título por apartado, sin texto antes ni después):\n${fields.map((f) => `## ${f.label}\n(texto)`).join('\n')}\n\nDATOS DEL INFORME:\n${ctxText}`;
+  const t = L();
+  return `${t.role}\n${t.concl(r.type === 'survey' ? t.survey : t.install)} ${t.rules}\n` +
+    (extra ? `\n${t.hints} ${extra}\n` : '') +
+    `\n${t.format}\n${fields.map((f) => `## ${tr(f.label)}\n${t.text}`).join('\n')}\n\n${t.data}\n${ctxText}`;
 }
 function freePrompt(r, question, ctxText) {
-  return `${ROLE}\n${question || 'Revisa este informe y dime qué falta o qué se podría mejorar.'}\nResponde en español. ${RULES}\n\nDATOS DEL INFORME:\n${ctxText}`;
+  const t = L();
+  return `${t.role}\n${question || t.review}\n${t.answerIn} ${t.rules}\n\n${t.data}\n${ctxText}`;
 }
 function imagePrompt(desc, withPhoto, ctxShort) {
-  return withPhoto
-    ? `Edita la foto adjunta para hacer un replanteo fotorrealista de la instalación: ${desc}.\nMantén la foto igual (mismo encuadre, luz, perspectiva y escala); añade solo lo indicado, con aspecto real y bien integrado. Si la foto tiene marcas o dibujos encima, úsalos como guía de dónde va cada cosa y elimínalos en el resultado. No añadas textos, logotipos ni marcas de agua.${ctxShort ? `\nContexto técnico: ${ctxShort}` : ''}`
-    : `Genera una imagen fotorrealista para un informe técnico: ${desc}.\nAspecto de foto real, a escala y sin textos, logotipos ni marcas de agua.${ctxShort ? `\nContexto técnico: ${ctxShort}` : ''}`;
+  const t = L();
+  return (withPhoto ? t.imgEdit(desc) : t.imgNew(desc)) + (ctxShort ? `\n${t.tech} ${ctxShort}` : '');
 }
 
 /** Abre la IA elegida con la instrucción (copiada también al portapapeles) */
@@ -132,7 +185,7 @@ function splitSections(text, fields) {
   const out = {}; let cur = null;
   for (const line of text.split('\n')) {
     const m = line.match(/^\s*(?:#{1,4}\s*|\*\*)(.+?)(?:\*\*)?\s*:?\s*$/);
-    const f = m && fields.find((x) => norm(x.label) === norm(m[1]));
+    const f = m && fields.find((x) => norm(tr(x.label)) === norm(m[1]) || norm(x.label) === norm(m[1]));
     if (f) { cur = f.key; out[cur] = []; continue; }
     if (cur) out[cur].push(line);
   }
@@ -178,14 +231,14 @@ export async function openAssistant(opts) {
     let withPhoto = !!opts.photo;
     if (mode === 'field') {
       const cur = String(r.data[opts.field.key] || '').trim();
-      body.appendChild(h('p', { class: 'muted small' }, `Redacta «${opts.field.label}» usando todo lo que has rellenado y marcado en las fotos.`));
+      body.appendChild(h('p', { class: 'muted small' }, `Redacta «${tr(opts.field.label)}» usando todo lo que has rellenado y marcado en las fotos.`));
       extra.placeholder = 'Indicaciones (opcional): más corto, en lista, menciona el riesgo de…';
       body.appendChild(extra);
       prompt = () => fieldPrompt(r, opts.field, cur, extra.value.trim(), ctxText());
       main = 'Redactar con ';
     } else if (mode === 'conclusion') {
       if (!conclFields.length) body.appendChild(h('p', { class: 'warn' }, 'No hay apartados de conclusión en este informe.'));
-      body.appendChild(h('p', { class: 'muted small' }, `Redacta de una vez: ${conclFields.map((f) => `«${f.label}»`).join(', ')}. Luego «Pegar respuesta» rellena cada apartado.`));
+      body.appendChild(h('p', { class: 'muted small' }, `Redacta de una vez: ${conclFields.map((f) => `«${tr(f.label)}»`).join(', ')}. Luego «Pegar respuesta» rellena cada apartado.`));
       extra.placeholder = 'Indicaciones (opcional): p. ej. la instalación es viable si el cliente instala una canaleta…';
       body.appendChild(extra);
       prompt = () => conclusionPrompt(r, conclFields, extra.value.trim(), ctxText());
@@ -208,9 +261,10 @@ export async function openAssistant(opts) {
       body.appendChild(strip);
       const ctxShort = () => {
         const d = r.data;
-        return [d.antenna?.antenna && `antena ${d.antenna.antenna}`, d.antenna?.mount && `montura ${d.antenna.mount}`, ...(d.equipment || []).filter((e) => e.kind === 'antenna').map((e) => `${e.model}${e.mount ? ` con ${e.mount}` : ''}`), d.surface && `superficie ${d.surface}`, d.mount_surface && `superficie ${d.mount_surface}`].filter(Boolean).join('; ');
+        const am = d.antenna || {}, mo = (x) => (x?.mount === '__other' ? x.mountOther : x?.mount);
+        return [am.antenna && [am.system === '__other' ? am.systemOther : am.system, am.antenna].filter(Boolean).join(' '), mo(am), ...(d.equipment || []).filter((e) => e.kind === 'antenna').map((e) => [manOf(e), e.model === '__other' ? e.modelOther : e.model, mo(e)].filter(Boolean).join(' ')), d.surface !== '__other' && d.surface, d.mount_surface !== '__other' && d.mount_surface].filter(Boolean).join('; ');
       };
-      prompt = () => imagePrompt(extra.value.trim() || 'la instalación propuesta', withPhoto && !!pick, ctxShort());
+      prompt = () => imagePrompt(extra.value.trim() || L().default, withPhoto && !!pick, ctxShort());
       body.appendChild(h('div', { class: 'stack' },
         h('button', { class: 'btn primary', onclick: async () => {
           if (!extra.value.trim()) { extra.focus(); return toast('Describe qué quieres en la imagen'); }
@@ -258,7 +312,7 @@ export async function openAssistant(opts) {
     if (!text) return toast('El portapapeles está vacío: copia antes la respuesta');
     if (mode === 'field') {
       const cur = String(r.data[opts.field.key] || '').trim();
-      const done = (v) => { setField(opts.field.key, v); m.close(); toast(`«${opts.field.label}» actualizado. Revisa el texto.`); };
+      const done = (v) => { setField(opts.field.key, v); m.close(); toast(`«${tr(opts.field.label)}» actualizado. Revisa el texto.`); };
       if (!cur) return done(text);
       const q = modal('Ya había texto', h('p', {}, '¿Sustituir lo que había o añadir la respuesta al final?'), [
         h('button', { class: 'btn', onclick: () => { q.close(); done(`${cur}\n${text}`); } }, 'Añadir al final'),
@@ -270,10 +324,10 @@ export async function openAssistant(opts) {
         // sin títulos: va todo a «Conclusión» (o al primer apartado)
         const f = conclFields.find((x) => /conclus|observaciones finales/i.test(x.label)) || conclFields[0];
         if (!f) return;
-        setField(f.key, text); m.close(); toast(`Texto puesto en «${f.label}». Revísalo.`); return;
+        setField(f.key, text); m.close(); toast(`Texto puesto en «${tr(f.label)}». Revísalo.`); return;
       }
       keys.forEach((k) => setField(k, parts[k]));
-      m.close(); toast(`Rellenados: ${keys.map((k) => conclFields.find((f) => f.key === k).label).join(', ')}. Revísalos.`, 5000);
+      m.close(); toast(`Rellenados: ${keys.map((k) => tr(conclFields.find((f) => f.key === k).label)).join(', ')}. Revísalos.`, 5000);
     }
   }
   draw();

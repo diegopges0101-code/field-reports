@@ -74,10 +74,13 @@ export function buildDoc(ctx) {
     const fieldByKey = Object.fromEntries(allFields(t).map((f) => [f.key, f]));
     const visible = (k) => { const f = fieldByKey[k]; return !f?.showIf || f.showIf(d); };
     // Traducción de un texto libre (si no hay traducción válida, se usa el original y se avisa)
+    const direct = (d.input_lang ?? 'es') === 'en';
     const tx = (path, text, label) => {
         if (typeof text !== 'string' || !text.trim())
             return '';
         const src = text.trim();
+        if (direct)
+            return src; // escrito directamente en inglés: no hay nada que traducir
         const e = english[path];
         if (e && e.src === src && e.status !== 'failed' && e.en.trim())
             return e.en.trim();
@@ -116,7 +119,9 @@ export function buildDoc(ctx) {
     const siteName = (d.site_name ?? '').trim();
     const isSurvey = report.type === 'survey';
     const equipmentRows = (key) => (d[key] ?? []).filter((e) => e.model || e.modelOther).map((e) => {
-        const model = e.model === '__other' ? (e.modelOther ?? '') : e.model;
+        const man = e.manufacturer === 'Other' ? (e.manufacturerOther ?? '').trim() : ['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : '';
+        const model0 = e.model === '__other' ? (e.modelOther ?? '') : e.model;
+        const model = man && !model0.toLowerCase().includes(man.toLowerCase()) ? `${man} ${e.kind === 'antenna' && !/antenn|dish|terminal/i.test(model0) ? 'antenna ' : ''}${model0}`.trim() : model0;
         const qty = e.qty && e.qty > 1 ? ` (x${e.qty})` : '';
         const mount = e.mount === '__other' ? (e.mountOther ?? '').trim() : e.mount;
         const idLabel = e.kind === 'sim' ? 'ICCID' : 'S/N';
@@ -151,13 +156,15 @@ export function buildDoc(ctx) {
         const am = (d.antenna ?? {});
         const mount = am.mount === '__other' ? (am.mountOther ?? '').trim() : am.mount ?? '';
         const loc = chips('location');
-        add('Proposed Starlink antenna location', [
+        const sys = am.system === '__other' ? (am.systemOther ?? '').trim() : (am.system ?? 'Starlink');
+        add(`Proposed ${sys ? sys + ' ' : ''}antenna location`, [
             KV([
+                ['System', sys === 'Starlink' ? '' : sys],
                 ['Antenna', am.antenna ?? ''],
                 ['Location', loc.join(', ')],
                 ['Surface', sel('surface')],
                 ['Mount', mount],
-                ['Sky view (Starlink app)', sel('sky_view')],
+                [sys === 'Starlink' ? 'Sky view (Starlink app)' : 'Sky view', sel('sky_view')],
             ]),
             P(d.no_drilling ? 'No drilling is recommended, in order to preserve the integrity and waterproofing of the roof.' : ''),
             P(txt('antenna_notes')),
@@ -233,7 +240,7 @@ export function buildDoc(ctx) {
             ['Site', [client, siteCode, siteName].filter(Boolean).join(' ')],
             ['GPS', (d.gps ?? '').trim()],
             ['Address', siteAddress(d)],
-            ['Installation', am.antenna ?? ''],
+            ['Installation', [sys === 'Starlink' || (am.antenna ?? '').toLowerCase().includes(sys.toLowerCase()) ? '' : sys, am.antenna ?? ''].filter(Boolean).join(' ')],
             ['Location', loc.join(', ')],
             ['Mount', mount],
             ['Initial route', initial],
@@ -271,7 +278,7 @@ export function buildDoc(ctx) {
         // --- 2. Instalación (numeración automática más abajo)
         const mountingBlocks = [];
         antennas.forEach((a, i) => {
-            mountingBlocks.push(multiAnt ? P(`Starlink antenna ${i + 1}`, true) : null);
+            mountingBlocks.push(multiAnt ? P(`${a.manufacturer === 'Other' ? (a.manufacturerOther ?? '').trim() : a.manufacturer || 'Starlink'} antenna ${i + 1}`.trim(), true) : null);
             mountingBlocks.push(KV([['Antenna', modelOf(a)], ['Serial / Kit', ids(a)], ['Mount', mountOf(a)]]));
             const n = tx(`equipment.${a.id}.notes`, a.notes, 'Notas antena');
             if (n) mountingBlocks.push(P(n));

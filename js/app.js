@@ -5,6 +5,7 @@ import { state, bootstrap, sync, pendingCount, applyBootData, logoKey } from './
 import { kv } from './db.js';
 import { applyCachedIcons, applyLogoIcons, cachedLogo } from './icons.js';
 import { API_URL, APP_VERSION } from './config.js';
+import { initI18n, lang, setLang, LANGS } from './i18n.js';
 import { listView, defaultList } from './views/list.js';
 import { editorView } from './views/editor.js';
 import { usersView, catalogView, companyView } from './views/admin.js';
@@ -21,12 +22,19 @@ function navLinks() {
   return [link('#/', 'Informes'), admin ? [link('#/admin/users', 'Usuarios'), link('#/admin/catalog', 'Catálogo'), link('#/admin/company', 'Empresa')] : null];
 }
 
+/** Selector de idioma (inglés por defecto). Los informes salen siempre en inglés. */
+function langPicker(cls = '') {
+  return h('div', { class: `lang-pick ${cls}`, 'data-nt': '' },
+    Object.entries(LANGS).map(([k, l]) => h('button', { type: 'button', class: k === lang() ? 'on' : '', title: l.name, 'aria-label': l.name, onclick: () => setLang(k) }, l.short)));
+}
+
 function openMenu() {
   const close = () => { back.remove(); menu.remove(); };
   const back = h('div', { class: 'menu-back', onclick: close });
   const menu = h('div', { class: 'menu', onclick: (e) => { if (e.target.tagName === 'A') close(); } },
     h('div', { class: 'who' }, state.user?.name, h('br'), h('span', { class: 'tiny' }, { admin: 'Administrador', supervisor: 'Supervisor', technician: 'Técnico' }[state.user?.role] || '')),
     navLinks(),
+    h('div', { class: 'menu-lang' }, h('span', {}, 'Idioma'), langPicker()),
     h('button', { onclick: () => { close(); sync(); toast('Sincronizando…'); } }, icon('sync'), 'Sincronizar ahora'),
     h('button', { onclick: () => { close(); logout(); } }, icon('logout'), 'Salir'),
     h('div', { class: 'who tiny', style: { borderBottom: 0, borderTop: '1px solid #eef0f3', marginTop: '4px' } }, `v${APP_VERSION}`));
@@ -85,12 +93,12 @@ function loginView() {
     btn.disabled = false; btn.textContent = 'Entrar';
   } },
   cachedLogo() ? h('img', { class: 'login-logo', src: cachedLogo(), alt: '' }) : null,
-  h('h2', { style: { textAlign: 'center' } }, 'Field Reports'), h('p', { class: 'muted', style: { textAlign: 'center' } }, 'Surveys e informes de instalación Starlink / Peplink'),
+  h('h2', { style: { textAlign: 'center' } }, 'Field Reports'), h('p', { class: 'muted', style: { textAlign: 'center' } }, 'Surveys e informes de instalación'),
   h('label', { class: 'label' }, 'Usuario o email'), user,
   h('label', { class: 'label mt' }, 'Contraseña'), pw, err, btn,
   h('p', { class: 'muted small mt' }, '¿Sin cuenta o contraseña olvidada? Pídesela al administrador.'),
   h('p', { class: 'muted tiny' }, `v${APP_VERSION}`));
-  return h('div', { class: 'login' }, form);
+  return h('div', { class: 'login' }, langPicker('on-login'), form);
 }
 
 function changePasswordView(oldPw = '') {
@@ -171,6 +179,7 @@ window.addEventListener('must-change', () => render(changePasswordView()));
 window.addEventListener('boot-refreshed', () => { const b = $('.topbar'); if (b && state.user) b.replaceWith(topbar()); updatePill(); applyLogoIcons(state.logo); });
 
 // Arranque
+initI18n();
 applyCachedIcons();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadController = !!navigator.serviceWorker.controller;

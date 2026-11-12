@@ -15,6 +15,7 @@ export const OPT = {
   clients: [o('Veolia', 'Veolia')],
   surveyObjective: [
     o('Validate the feasibility of the Starlink antenna installation', 'Validar viabilidad de instalación Starlink'),
+    o('Validate the feasibility of the antenna installation', 'Validar viabilidad de instalación de la antena (OneWeb, VSAT, TVRO…)'),
     o('Determine the antenna location', 'Determinar ubicación de la antena'),
     o('Study the cable route to the network infrastructure', 'Estudiar el recorrido del cable'),
     o('Identify the required equipment and access means', 'Identificar material y medios de acceso'),
@@ -184,11 +185,11 @@ export const SURVEY = {
       id: 'antenna',
       title: 'Antena',
       fields: [
-        { key: 'antenna', type: 'antennaMount', label: 'Antena Starlink propuesta y montura' },
+        { key: 'antenna', type: 'antennaMount', label: 'Antena propuesta y montura' },
         { key: 'location', type: 'chips', label: 'Emplazamiento', options: OPT.location, allowOther: true },
         { key: 'surface', type: 'select', label: 'Tipo de superficie', options: OPT.surface, allowOther: true },
         { key: 'no_drilling', type: 'toggle', label: 'Sin perforación (preservar estanqueidad)' },
-        { key: 'sky_view', type: 'select', label: 'Vista del cielo (app Starlink)', options: OPT.skyView },
+        { key: 'sky_view', type: 'select', label: 'Vista del cielo', options: OPT.skyView },
         { key: 'antenna_notes', type: 'textarea', label: 'Notas del emplazamiento', translatable: true },
       ],
     },

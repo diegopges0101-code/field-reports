@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { idb } from '../db.js';
 import { state, listPhotos, ensurePhotoData, sync, pendingCount } from '../store.js';
 import { TEMPLATES, missingRequired } from '../templates.js';
+import { tr } from '../i18n.js';
 import { buildDoc, emailSubject, emailBody, whatsappText } from '../english.js';
 import { buildPdf } from '../pdf.js';
 import { renderAnnotated } from '../annot.js';
@@ -50,7 +51,7 @@ export function outputsStep(r, { onChanged }) {
     const missing = missingRequired(tpl, r.data);
     const busy = (btn, txt) => { const old = btn.textContent; btn.disabled = true; btn.textContent = txt; return () => { btn.disabled = false; btn.textContent = old; }; };
 
-    if (missing.length) box.appendChild(h('div', { class: 'warn' }, h('strong', {}, 'Faltan campos obligatorios:'), h('ul', {}, missing.map((m) => h('li', {}, `${m.step}: ${m.label}`)))));
+    if (missing.length) box.appendChild(h('div', { class: 'warn' }, h('strong', {}, 'Faltan campos obligatorios:'), h('ul', {}, missing.map((m) => h('li', {}, `${tr(m.step)}: ${tr(m.label)}`)))));
     if (model.warnings.length) box.appendChild(h('div', { class: 'warn' }, h('strong', {}, 'Textos sin traducir'), ' (saldrán en el idioma original; ve a "Revisar inglés"):', h('ul', {}, model.warnings.map((w) => h('li', {}, w.replace('Sin traducir: ', ''))))));
 
     // ---------- PDF ----------
