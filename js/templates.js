@@ -12,6 +12,18 @@ const o = (v, es) => ({ v, es });
 // LISTAS DE OPCIONES
 // ---------------------------------------------------------------------
 export const OPT = {
+  // Antenas fuera de Starlink/Peplink (Intellian, Cobham SeaTel…): banda, tipo y accesorios usados
+  antBand: [o('Ku', 'Ku'), o('Ka', 'Ka'), o('C', 'C'), o('X', 'X'), o('L', 'L'), o('Ku/Ka', 'Ku/Ka'), o('Multi-band', 'Multibanda')],
+  antType: [
+    o('Fixed', 'Fija'), o('Stabilized maritime', 'Marítima estabilizada'), o('Auto-pointing', 'Autoapuntamiento'),
+    o('Flat panel', 'Panel plano'), o('Vehicle / on-the-move', 'Vehículo / en movimiento'), o('Flyaway / portable', 'Portátil / flyaway'),
+  ],
+  antUnit: [o('m', 'm'), o('cm', 'cm'), o('in', 'pulg.')],
+  partType: [
+    o('Modem', 'Módem'), o('BUC', 'BUC'), o('LNB', 'LNB'), o('ACU / controller', 'ACU / controlador'),
+    o('Coaxial cable', 'Cable coaxial'), o('Connectors', 'Conectores'), o('Router / switch', 'Router / switch'),
+    o('Power supply / PoE', 'Fuente / PoE'), o('Part / spare', 'Pieza / repuesto'), o('Other', 'Otro'),
+  ],
   clients: [o('Veolia', 'Veolia')],
   surveyObjective: [
     o('Validate the feasibility of the Starlink antenna installation', 'Validar viabilidad de instalación Starlink'),

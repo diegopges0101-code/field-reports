@@ -645,3 +645,17 @@ input[type=checkbox], input[type=radio] { accent-color: var(--ink); box-shadow: 
 .lang-pick.on-login button { color: #d4d4d8; }
 .lang-pick.on-login button.on { background: #fafafa; color: #09090b; }
 .menu .lang-pick button { display: inline-block; padding: 0 8px; border-radius: 7px; text-align: center; font-size: 12.5px; }
+
+/* v2.8.0 — antenas libres (Intellian, SeaTel…) y accesorios/dispositivos usados */
+.grid4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.grid4 > * { min-width: 0; }
+@media (min-width: 760px) { .grid4 { grid-template-columns: 1fr 1fr 1fr 90px; } }
+.row.nowrap { flex-wrap: nowrap; gap: 6px; }
+.sat-ant { margin-top: 10px; }
+.parts { margin-top: 12px; padding: 10px; border: 1px dashed var(--line); border-radius: 10px; background: var(--surface, #fff); }
+.parts-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.part { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px 10px; margin-bottom: 8px; background: var(--surface-2, #f8fafc); }
+.part-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.part-head .part-type { width: auto; max-width: 55%; font-weight: 600; }
+.part-head .part-what { flex: 1; min-width: 0; }
+.parts .chips { margin-top: 4px; }

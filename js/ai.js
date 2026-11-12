@@ -81,6 +81,9 @@ const other = (d, f, v) => (v === '__other' ? d[`${f.key}_other`] || '' : v);
 const kindEs = { antenna: 'Antena', router: 'Router', cable: 'Cable', accessory: 'Accesorio', sim: 'Tarjeta SIM' };
 const manOf = (e) => (e.manufacturer === 'Other' ? e.manufacturerOther : (['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : ''));
 
+// Antena escrita a mano y sus accesorios (nunca se envían números de serie a la IA)
+const antTxt = (x, mk) => [x.brand, x[mk], x.diameter && `${x.diameter} ${x.dunit || 'm'}`, x.band, x.antType].filter(Boolean).join(' ');
+const partsTxt = (ps) => (ps || []).map((p) => [p.type === 'Other' ? p.typeOther || 'Other' : p.type, p.brand, p.model, p.qty > 1 && `x${p.qty}`, p.notes].filter(Boolean).join(' ')).filter(Boolean).join(', ');
 function valueText(f, v, d) {
   if (v == null || v === '') return '';
   const t = L();
@@ -90,8 +93,8 @@ function valueText(f, v, d) {
     case 'toggle': return v === true ? t.yes : v === false ? t.no : '';
     case 'number': return `${v}${f.unit ? ' ' + f.unit : ''}`;
     case 'chips': return [...(v.values || []).map((x) => optLabel(f, x)), v.other].filter(Boolean).join(', ');
-    case 'antennaMount': return [[v.system === '__other' ? v.systemOther : v.system, v.antenna].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${t.mount}: `);
-    case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.model === '__other' ? e.modelOther : e.model, e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+    case 'antennaMount': return [[[v.system === '__other' ? v.systemOther : v.system, antTxt(v, 'antenna')].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${t.mount}: `), partsTxt(v.parts) && `(${partsTxt(v.parts)})`].filter(Boolean).join(' ');
+    case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.brand, e.model === '__other' ? e.modelOther : e.model, e.diameter && `${e.diameter} ${e.dunit || 'm'}`, e.band, e.antType, e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes, partsTxt(e.parts) && `(${partsTxt(e.parts)})`].filter(Boolean).join(' ')).filter(Boolean).join('; ');
     case 'segments': { const tot = (v || []).reduce((a, s) => a + (Number(s.length) || 0), 0); return (v || []).map((s) => `${s.desc || t.section} ${s.length ?? '?'} m`).join(', ') + (tot ? ` (${t.total} ${tot} m)` : ''); }
     case 'antennaTests': {
       const ants = (d.equipment || []).filter((e) => e.kind === 'antenna');
@@ -262,7 +265,7 @@ export async function openAssistant(opts) {
       const ctxShort = () => {
         const d = r.data;
         const am = d.antenna || {}, mo = (x) => (x?.mount === '__other' ? x.mountOther : x?.mount);
-        return [am.antenna && [am.system === '__other' ? am.systemOther : am.system, am.antenna].filter(Boolean).join(' '), mo(am), ...(d.equipment || []).filter((e) => e.kind === 'antenna').map((e) => [manOf(e), e.model === '__other' ? e.modelOther : e.model, mo(e)].filter(Boolean).join(' ')), d.surface !== '__other' && d.surface, d.mount_surface !== '__other' && d.mount_surface].filter(Boolean).join('; ');
+        return [(am.antenna || am.brand) && [am.system === '__other' ? am.systemOther : am.system, antTxt(am, 'antenna')].filter(Boolean).join(' '), mo(am), ...(d.equipment || []).filter((e) => e.kind === 'antenna').map((e) => [manOf(e), e.brand, e.model === '__other' ? e.modelOther : e.model, e.diameter && `${e.diameter} ${e.dunit || 'm'}`, mo(e)].filter(Boolean).join(' ')), d.surface !== '__other' && d.surface, d.mount_surface !== '__other' && d.mount_surface].filter(Boolean).join('; ');
       };
       prompt = () => imagePrompt(extra.value.trim() || L().default, withPhoto && !!pick, ctxShort());
       body.appendChild(h('div', { class: 'stack' },

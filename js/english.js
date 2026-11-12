@@ -1,4 +1,16 @@
 import { TEMPLATES, allFields } from './templates.js';
+/** Accesorios y dispositivos de antenas fuera de Starlink/Peplink (módem, BUC, LNB…). */
+const partType = (p) => (p.type === 'Other' ? (p.typeOther ?? '').trim() || 'Other' : p.type || 'Other');
+const partName = (p) => [partType(p), [p.brand, p.model].map((x) => (x ?? '').trim()).filter(Boolean).join(' ')].filter(Boolean).join(': ');
+/** Antena escrita a mano: "Intellian v240MT 2.4 m" + "Ku band · Stabilized maritime". */
+export function freeAntenna(e, modelKey) {
+    const model = (e[modelKey] ?? '').trim();
+    const brand = (e.brand ?? '').trim();
+    const dia = (e.diameter ?? '').toString().trim();
+    const name = [brand && !model.toLowerCase().includes(brand.toLowerCase()) ? brand : '', model, dia ? `${dia} ${e.dunit || 'm'}` : ''].filter(Boolean).join(' ');
+    const specs = [e.band ? `${e.band} band` : '', e.antType ?? ''].filter(Boolean).join(' · ');
+    return { name, specs, free: !!(brand || dia || e.band || e.antType) };
+}
 export function getTranslatables(r, photos) {
     const t = TEMPLATES[r.type];
     const d = r.data;
@@ -20,7 +32,12 @@ export function getTranslatables(r, photos) {
         if (f.type === 'segments')
             v?.forEach((s, i) => push(`${f.key}.${s.id}.desc`, `${f.label} – tramo ${i + 1}`, s.desc));
         if (f.type === 'equipment')
-            v?.forEach((e) => push(`${f.key}.${e.id}.notes`, `Notas equipo ${e.model || ''}`, e.notes));
+            v?.forEach((e) => {
+                push(`${f.key}.${e.id}.notes`, `Notas equipo ${e.model === '__other' ? e.modelOther ?? '' : e.model || ''}`.trim(), e.notes);
+                (e.parts ?? []).forEach((p) => push(`${f.key}.${e.id}.p.${p.id}`, `Notas accesorio ${partName(p)}`.trim(), p.notes));
+            });
+        if (f.type === 'antennaMount')
+            (v?.parts ?? []).forEach((p) => push(`${f.key}.p.${p.id}`, `Notas accesorio ${partName(p)}`.trim(), p.notes));
     }
     if (r.type === 'installation') {
         const tests = d.sl_tests ?? {};
@@ -118,17 +135,35 @@ export function buildDoc(ctx) {
     const siteCode = (d.site_code ?? '').trim();
     const siteName = (d.site_name ?? '').trim();
     const isSurvey = report.type === 'survey';
-    const equipmentRows = (key) => (d[key] ?? []).filter((e) => e.model || e.modelOther).map((e) => {
+    const FREE = ['OneWeb', 'VSAT', 'TVRO', 'Other'];
+    /** Líneas de accesorios/dispositivos: "BUC: Norsat 3020 (x2) – S/N … – notas". */
+    const partLines = (parts, base) => (parts ?? []).filter((p) => partName(p) && (p.brand || p.model || p.serial || p.notes || p.type === 'Other')).map((p) => {
+        const n = tx(`${base}.p.${p.id}`, p.notes, `Notas accesorio ${partName(p)}`);
+        return {
+            label: `${partName(p)}${p.qty && p.qty > 1 ? ` (x${p.qty})` : ''}`,
+            value: [p.serial?.trim() ? `S/N ${p.serial.trim()}` : '', n].filter(Boolean).join(' · '),
+        };
+    });
+    const lineText = (x) => (x.value ? `${x.label} – ${x.value}` : x.label);
+    const equipmentRows = (key) => (d[key] ?? []).flatMap((e) => {
         const man = e.manufacturer === 'Other' ? (e.manufacturerOther ?? '').trim() : ['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : '';
+        const parts = FREE.includes(e.manufacturer) ? partLines(e.parts, `${key}.${e.id}`) : [];
+        if (e.kind === 'accessory' && FREE.includes(e.manufacturer) && !(e.model || e.modelOther))
+            return parts.map((p) => ({ ...p, label: man ? `${p.label} (${man})` : p.label }));
+        const fa = e.kind === 'antenna' && FREE.includes(e.manufacturer) ? freeAntenna(e, 'modelOther') : null;
+        if (!(e.model || e.modelOther || fa?.name))
+            return parts;
         const model0 = e.model === '__other' ? (e.modelOther ?? '') : e.model;
-        const model = man && !model0.toLowerCase().includes(man.toLowerCase()) ? `${man} ${e.kind === 'antenna' && !/antenn|dish|terminal/i.test(model0) ? 'antenna ' : ''}${model0}`.trim() : model0;
+        let model;
+        if (fa?.free) model = /antenn|dish|terminal/i.test(fa.name) ? fa.name : `${fa.name} antenna`;
+        else model = man && !model0.toLowerCase().includes(man.toLowerCase()) ? `${man} ${e.kind === 'antenna' && !/antenn|dish|terminal/i.test(model0) ? 'antenna ' : ''}${model0}`.trim() : model0;
         const qty = e.qty && e.qty > 1 ? ` (x${e.qty})` : '';
         const mount = e.mount === '__other' ? (e.mountOther ?? '').trim() : e.mount;
         const idLabel = e.kind === 'sim' ? 'ICCID' : 'S/N';
-        return {
+        return [{
             label: `${model}${qty}`,
-            value: [e.serial?.trim() ? `${idLabel} ${e.serial.trim()}` : '', e.kit?.trim() ? `Kit ${e.kit.trim()}` : '', mount ? `Mount: ${mount}` : ''].filter(Boolean).join(' · '),
-        };
+            value: [fa?.free ? man : '', fa?.specs ?? '', e.serial?.trim() ? `${idLabel} ${e.serial.trim()}` : '', e.kit?.trim() ? `Kit ${e.kit.trim()}` : '', mount ? `Mount: ${mount}` : ''].filter(Boolean).join(' · '),
+        }, ...parts];
     });
     const sections = [];
     const add = (title, blocks) => {
@@ -157,15 +192,21 @@ export function buildDoc(ctx) {
         const mount = am.mount === '__other' ? (am.mountOther ?? '').trim() : am.mount ?? '';
         const loc = chips('location');
         const sys = am.system === '__other' ? (am.systemOther ?? '').trim() : (am.system ?? 'Starlink');
+        const fam = sys === 'Starlink' ? null : freeAntenna(am, 'antenna');
+        const amParts = sys === 'Starlink' ? [] : partLines(am.parts, 'antenna');
         add(`Proposed ${sys ? sys + ' ' : ''}antenna location`, [
             KV([
                 ['System', sys === 'Starlink' ? '' : sys],
-                ['Antenna', am.antenna ?? ''],
+                ['Antenna', fam ? fam.name : am.antenna ?? ''],
+                ['Band', fam && am.band ? am.band : ''],
+                ['Antenna type', fam ? am.antType ?? '' : ''],
                 ['Location', loc.join(', ')],
                 ['Surface', sel('surface')],
                 ['Mount', mount],
                 [sys === 'Starlink' ? 'Sky view (Starlink app)' : 'Sky view', sel('sky_view')],
             ]),
+            P(amParts.length ? 'Accessories and devices to be used with this antenna:' : '', true),
+            B(amParts.map(lineText)),
             P(d.no_drilling ? 'No drilling is recommended, in order to preserve the integrity and waterproofing of the roof.' : ''),
             P(txt('antenna_notes')),
         ]);
@@ -207,7 +248,7 @@ export function buildDoc(ctx) {
         ]);
         const onsite = equipmentRows('onsite_equipment');
         add('Equipment already available on site', [
-            B(onsite.map((e) => (e.value ? `${e.label} – ${e.value}` : e.label))),
+            B(onsite.map(lineText)),
             P(txt('onsite_notes')),
         ]);
         const materials = chips('materials');
@@ -240,7 +281,7 @@ export function buildDoc(ctx) {
             ['Site', [client, siteCode, siteName].filter(Boolean).join(' ')],
             ['GPS', (d.gps ?? '').trim()],
             ['Address', siteAddress(d)],
-            ['Installation', [sys === 'Starlink' || (am.antenna ?? '').toLowerCase().includes(sys.toLowerCase()) ? '' : sys, am.antenna ?? ''].filter(Boolean).join(' ')],
+            ['Installation', [sys === 'Starlink' || (fam?.name ?? am.antenna ?? '').toLowerCase().includes(sys.toLowerCase()) ? '' : sys, fam ? fam.name : am.antenna ?? ''].filter(Boolean).join(' ')],
             ['Location', loc.join(', ')],
             ['Mount', mount],
             ['Initial route', initial],
@@ -279,9 +320,12 @@ export function buildDoc(ctx) {
         const mountingBlocks = [];
         antennas.forEach((a, i) => {
             mountingBlocks.push(multiAnt ? P(`${a.manufacturer === 'Other' ? (a.manufacturerOther ?? '').trim() : a.manufacturer || 'Starlink'} antenna ${i + 1}`.trim(), true) : null);
-            mountingBlocks.push(KV([['Antenna', modelOf(a)], ['Serial / Kit', ids(a)], ['Mount', mountOf(a)]]));
+            const fa = FREE.includes(a.manufacturer) ? freeAntenna(a, 'modelOther') : null;
+            mountingBlocks.push(KV([['Antenna', fa?.free ? fa.name : modelOf(a)], ['Band / type', fa?.specs ?? ''], ['Serial / Kit', ids(a)], ['Mount', mountOf(a)]]));
             const n = tx(`equipment.${a.id}.notes`, a.notes, 'Notas antena');
             if (n) mountingBlocks.push(P(n));
+            const pl = fa ? partLines(a.parts, `equipment.${a.id}`) : [];
+            if (pl.length) mountingBlocks.push(P('Accessories and devices used:', true), B(pl.map(lineText)));
         });
         add('@2|Antenna Mounting', [...mountingBlocks, KV([['Surface', surface]]), P(txt('mount_notes'))]);
         add('@2|Cable Routing', [

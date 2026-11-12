@@ -234,6 +234,63 @@ export function mountsFor(catalog, antennaName) {
   return catalog.filter((c) => c.kind === 'mount' && c.active && (!fam || c.compat.includes(fam)));
 }
 
+// ---------------------------------------------------------------------
+// Antenas fuera de Starlink/Peplink (Intellian, Cobham SeaTel, KVH…):
+// el catálogo es enorme, así que el técnico escribe marca, modelo, diámetro,
+// banda y tipo, y lista los accesorios/dispositivos que usa con ella.
+// ---------------------------------------------------------------------
+const ANT_BRANDS = ['Intellian', 'Cobham SeaTel', 'Cobham Sailor', 'KVH', 'Kymeta', 'Hughes', 'Gilat', 'Viasat', 'ThinKom', 'Hanwha Phasor', 'Prodelin', 'Skyware', 'Channel Master', 'Jonsa', 'Orbit', 'Avl', 'Gigasat', 'Norsat', 'Eutelsat OneWeb'];
+const PART_BRANDS = ['iDirect', 'Comtech', 'Newtec', 'Hughes', 'Gilat', 'Intellian', 'Cobham SeaTel', 'KVH', 'Norsat', 'Actox', 'SMW', 'Kratos', 'NJRC', 'Agilis', 'Peplink', 'Cisco', 'Ubiquiti', 'MikroTik', 'Times Microwave', 'Belden', 'Phihong'];
+let dlSeq = 0;
+const datalist = (items) => { const id = `dl${++dlSeq}`; return [id, h('datalist', { id }, items.map((x) => h('option', { value: x })))]; };
+const sub = (label, ...kids) => h('div', {}, h('div', { class: 'sublabel' }, label), ...kids);
+const optSel = (list, value, ro, onPick) => h('select', { disabled: ro, onchange: (e) => onPick(e.target.value) },
+  h('option', { value: '' }, '— Elegir —'), list.map((x) => h('option', { value: x.v, selected: x.v === value }, x.es)));
+
+/** Marca, modelo, diámetro, banda y tipo de una antena "libre". `mk` = clave donde se guarda el modelo. */
+function satAntennaFields(v, mk, catalogModels, ro, set) {
+  const [bId, bList] = datalist(ANT_BRANDS);
+  const [mId, mList] = datalist(catalogModels);
+  return h('div', { class: 'sat-ant' },
+    h('div', { class: 'grid3' },
+      sub('Marca', h('input', { list: bId, placeholder: 'Ej. Intellian, Cobham SeaTel…', value: v.brand || '', disabled: ro, autocomplete: 'off', oninput: (e) => set({ brand: e.target.value }, false) }), bList),
+      sub('Modelo', h('input', { list: mId, placeholder: 'Ej. v240MT, 4009…', value: v[mk] || '', disabled: ro, autocomplete: 'off', oninput: (e) => set({ [mk]: e.target.value }, false) }), mList),
+      sub('Diámetro', h('div', { class: 'row nowrap' },
+        h('input', { type: 'text', inputmode: 'decimal', placeholder: 'Ej. 1,2', value: v.diameter || '', disabled: ro, style: 'flex:1;min-width:0', oninput: (e) => set({ diameter: e.target.value }, false) }),
+        h('select', { disabled: ro, style: 'width:auto', onchange: (e) => set({ dunit: e.target.value }, false) },
+          OPT.antUnit.map((x) => h('option', { value: x.v, selected: x.v === (v.dunit || 'm') }, x.es)))))),
+    h('div', { class: 'grid2 mt' },
+      sub('Banda', optSel(OPT.antBand, v.band || '', ro, (b) => set({ band: b }, false))),
+      sub('Tipo de antena', optSel(OPT.antType, v.antType || '', ro, (t) => set({ antType: t }, false)))));
+}
+
+/** Lista "Accesorios y dispositivos usados": módem, BUC, LNB, cables, piezas… aunque no estén en el catálogo. */
+function partsEditor(parts0, ro, onChange0, opts = {}) {
+  let parts = parts0 || [];
+  const onChange = (nv, re) => { parts = nv; onChange0(nv, re); };
+  const setP = (id, patch, re) => onChange(parts.map((p) => (p.id === id ? { ...p, ...patch } : p)), re);
+  const [bId, bList] = datalist(PART_BRANDS);
+  const label = (t) => OPT.partType.find((x) => x.v === t)?.es || t;
+  return h('div', { class: 'parts' },
+    opts.noTitle ? null : h('div', { class: 'parts-head' }, h('b', {}, 'Accesorios y dispositivos usados'),
+      h('span', { class: 'muted small' }, opts.hint || 'Todo lo que se usa con esta antena, aunque no esté en el catálogo')),
+    bList,
+    parts0.map((p, i) => h('div', { class: 'part' },
+      h('div', { class: 'part-head' },
+        h('select', { class: 'part-type', disabled: ro, onchange: (e) => setP(p.id, { type: e.target.value }, true) },
+          OPT.partType.map((x) => h('option', { value: x.v, selected: x.v === p.type }, x.es))),
+        p.type === 'Other' ? h('input', { class: 'part-what', placeholder: '¿Qué es?', value: p.typeOther || '', disabled: ro, oninput: (e) => setP(p.id, { typeOther: e.target.value }, false) }) : h('span', { class: 'grow' }),
+        ro ? null : h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: () => onChange(parts.filter((x) => x.id !== p.id), true) }, icon('trash', { size: 16 }))),
+      h('div', { class: 'grid4' },
+        sub('Marca', h('input', { list: bId, value: p.brand || '', disabled: ro, autocomplete: 'off', placeholder: 'Ej. iDirect', oninput: (e) => setP(p.id, { brand: e.target.value }, false) })),
+        sub('Modelo', h('input', { value: p.model || '', disabled: ro, autocomplete: 'off', placeholder: 'Ej. X7', oninput: (e) => setP(p.id, { model: e.target.value }, false) })),
+        sub('Nº de serie (S/N)', h('input', { value: p.serial || '', disabled: ro, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', oninput: (e) => setP(p.id, { serial: e.target.value }, false) })),
+        sub('Cantidad', h('input', { type: 'number', min: 1, inputmode: 'numeric', value: p.qty || 1, disabled: ro, oninput: (e) => setP(p.id, { qty: Number(e.target.value) || 1 }, false) }))),
+      h('input', { class: 'mt', placeholder: 'Notas (opcional)', value: p.notes || '', disabled: ro, oninput: (e) => setP(p.id, { notes: e.target.value }, false) }))),
+    ro ? null : h('div', { class: 'chips' },
+      OPT.partType.map((x) => h('button', { type: 'button', class: 'chip add', onclick: () => onChange([...parts, { id: uid(), type: x.v, qty: 1 }], true) }, `+ ${x.es}`))));
+}
+
 // Sistemas de antena admitidos (además de Starlink). '__other' = el técnico lo escribe a mano.
 export const SYSTEMS = ['Starlink', 'OneWeb', 'VSAT', 'TVRO'];
 export const systemName = (v) => (v?.system === '__other' ? (v.systemOther || '').trim() : v?.system || 'Starlink');
@@ -244,7 +301,7 @@ function antennaMount(catalog, value0, ro, onChange0) {
   const system = value.system || 'Starlink';
   const starlink = system === 'Starlink';
   const sysSel = h('div', {}, h('div', { class: 'sublabel' }, 'Sistema'),
-    h('select', { disabled: ro, onchange: (e) => onChange({ system: e.target.value, systemOther: '', antenna: '', mount: '', mountOther: '' }, true) },
+    h('select', { disabled: ro, onchange: (e) => onChange({ ...value, system: e.target.value, systemOther: '', antenna: e.target.value === 'Starlink' || system === 'Starlink' ? '' : value.antenna, mount: '', mountOther: '' }, true) },
       SYSTEMS.map((x) => h('option', { value: x, selected: x === system }, x)),
       h('option', { value: '__other', selected: system === '__other' }, 'Otro…')),
     system === '__other' ? h('input', { class: 'mt', placeholder: 'Escribe qué sistema o tecnología es', value: value.systemOther || '', disabled: ro, oninput: (e) => onChange({ ...value, systemOther: e.target.value }, false) }) : null);
@@ -260,19 +317,14 @@ function antennaMount(catalog, value0, ro, onChange0) {
         optionSelect(mounts.map((m) => ({ v: m.name, es: m.name })), value.mount || '', true, value.mountOther || '', ro || !value.antenna,
           (m) => onChange({ ...value, mount: m }, true), (o) => onChange({ ...value, mountOther: o }, false))));
   }
-  // OneWeb, VSAT, TVRO u otro: modelos del catálogo de ese fabricante si los hay; si no, texto libre
-  const models = catalog.filter((c) => c.kind === 'antenna' && c.manufacturer === system && (c.active || c.name === value.antenna));
-  const inCatalog = models.some((m) => m.name === value.antenna);
-  return h('div', { class: 'grid3' }, sysSel,
-    h('div', {}, h('div', { class: 'sublabel' }, 'Modelo de antena'),
-      models.length ? h('select', { disabled: ro, onchange: (e) => onChange({ ...value, antenna: e.target.value === '__free' ? '' : e.target.value, free: e.target.value === '__free' }, true) },
-        h('option', { value: '' }, '— Elegir —'),
-        models.map((a) => h('option', { value: a.name, selected: a.name === value.antenna }, a.name)),
-        h('option', { value: '__free', selected: !!value.free || (!!value.antenna && !inCatalog) }, 'Otro…')) : null,
-      !models.length || value.free || (value.antenna && !inCatalog)
-        ? h('input', { class: models.length ? 'mt' : '', placeholder: 'Marca, modelo y diámetro (ej. Intellian 1,2 m)', value: value.antenna || '', disabled: ro, oninput: (e) => onChange({ ...value, antenna: e.target.value }, false) }) : null),
-    h('div', {}, h('div', { class: 'sublabel' }, 'Montura'),
-      h('input', { placeholder: 'Tipo de montura o soporte', value: value.mountOther || '', disabled: ro, oninput: (e) => onChange({ ...value, mount: e.target.value ? '__other' : '', mountOther: e.target.value }, false) })));
+  // OneWeb, VSAT, TVRO u otro: el técnico escribe marca, modelo, diámetro… (el catálogo solo sugiere)
+  const models = catalog.filter((c) => c.kind === 'antenna' && c.manufacturer === system && c.active).map((c) => c.name);
+  const patch = (p, re) => onChange({ ...value, ...p }, re);
+  return h('div', { class: 'stack' },
+    h('div', { class: 'grid3' }, sysSel,
+      sub('Montura', h('input', { placeholder: 'Tipo de montura o soporte', value: value.mountOther || '', disabled: ro, oninput: (e) => patch({ mount: e.target.value ? '__other' : '', mountOther: e.target.value }, false) }))),
+    satAntennaFields(value, 'antenna', models, ro, patch),
+    partsEditor(value.parts || [], ro, (parts, re) => patch({ parts }, re)));
 }
 
 // ---------------------------------------------------------------------
@@ -293,7 +345,9 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
   // "Otra igual": mismo modelo y montura, sin números de serie (para 2ª, 3ª antena…)
   const clone = (r) => {
     const i = rows.findIndex((x) => x.id === r.id);
-    const copy = { id: uid(), manufacturer: r.manufacturer, kind: r.kind, model: r.model, modelOther: r.modelOther, mount: r.mount, mountOther: r.mountOther };
+    const copy = { id: uid(), manufacturer: r.manufacturer, manufacturerOther: r.manufacturerOther, kind: r.kind, model: r.model, modelOther: r.modelOther, mount: r.mount, mountOther: r.mountOther,
+      brand: r.brand, diameter: r.diameter, dunit: r.dunit, band: r.band, antType: r.antType,
+      parts: r.parts ? r.parts.map((p) => ({ ...p, id: uid(), serial: '' })) : undefined };
     onChange([...rows.slice(0, i + 1), copy, ...rows.slice(i + 1)], true);
   };
   const countBy = {};
@@ -309,6 +363,11 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
       const tKey = ['router', 'antenna'].includes(r.kind) ? `${manName} ${r.kind}` : r.kind;
       countBy[tKey] = (countBy[tKey] || 0) + 1;
       const title = ['router', 'antenna'].includes(r.kind) ? [CARD_TITLE[r.kind], manName].filter(Boolean) : [CARD_TITLE[r.kind] || 'Equipo'];
+      // Fuera de Starlink/Peplink: antena escrita a mano + accesorios/dispositivos usados
+      const freeAnt = r.kind === 'antenna' && FREE_MAN.includes(r.manufacturer);
+      const freeAcc = r.kind === 'accessory' && FREE_MAN.includes(r.manufacturer);
+      const freeSet = (p, re) => setRow(r.id, 'modelOther' in p ? { ...p, model: p.modelOther ? '__other' : '' } : p, re);
+      const partsBox = (hint) => partsEditor(r.parts || [], ro, (parts, re) => setRow(r.id, { parts }, re), { hint });
       return h('div', { class: 'card eq' },
         h('div', { class: 'eq-head' }, h('span', {}, title[0], title[1] ? ` ${title[1]}` : '', ` ${countBy[tKey]}`),
           ro ? null : h('div', { class: 'row' },
@@ -322,13 +381,14 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
           h('div', {}, h('div', { class: 'sublabel' }, 'Tipo'),
             h('select', { disabled: ro, onchange: (e) => setRow(r.id, { kind: e.target.value, model: '' }, true) },
               KINDS_BY_MAN[r.manufacturer].map((k) => h('option', { value: k, selected: k === r.kind }, KIND_LABEL[k])))),
-          h('div', {}, h('div', { class: 'sublabel' }, 'Modelo'),
+          freeAnt || freeAcc ? null : h('div', {}, h('div', { class: 'sublabel' }, 'Modelo'),
             // sin modelos en el catálogo (OneWeb, VSAT, TVRO, otro…): se escribe a mano
             models.length || !FREE_MAN.includes(r.manufacturer)
               ? optionSelect(models.map((m) => ({ v: m.name, es: m.name })), r.model, true, r.modelOther || '', ro,
                 (m) => setRow(r.id, { model: m, mount: '' }, true), (o) => setRow(r.id, { modelOther: o }, false))
               : h('input', { placeholder: 'Marca y modelo', value: r.modelOther || '', disabled: ro, oninput: (e) => setRow(r.id, { model: e.target.value ? '__other' : '', modelOther: e.target.value }, false) }))),
-        r.kind === 'antenna'
+        freeAnt ? satAntennaFields(r, 'modelOther', models.map((m) => m.name), ro, freeSet) : null,
+        freeAcc ? partsBox('Módems, BUC, LNB, cables, piezas… aunque no estén en el catálogo') : r.kind === 'antenna'
           ? h('div', { class: 'grid3 mt' },
             serialInput(r, 'Nº de serie (S/N)', 'serial', 'Ej. 2DWC…', 'text'),
             starlinkAnt ? serialInput(r, 'Nº de kit', 'kit', 'Ej. KIT4051…', 'text')
@@ -341,11 +401,13 @@ function equipmentEditor(catalog, rows0, ro, onChange0) {
             r.kind === 'sim' ? serialInput(r, 'ICCID', 'serial', '8934…', 'numeric') : serialInput(r, 'Nº de serie (S/N)', 'serial', 'Ej. 1936-…', 'text'),
             h('div', {}, h('div', { class: 'sublabel' }, 'Cantidad'),
               h('input', { type: 'number', min: 1, inputmode: 'numeric', value: r.qty || 1, disabled: ro, oninput: (e) => setRow(r.id, { qty: Number(e.target.value) || 1 }, false) }))),
-        h('input', { class: 'mt', placeholder: 'Notas (opcional)', value: r.notes || '', disabled: ro, oninput: (e) => setRow(r.id, { notes: e.target.value }, false) }));
+        h('input', { class: 'mt', placeholder: 'Notas (opcional)', value: r.notes || '', disabled: ro, oninput: (e) => setRow(r.id, { notes: e.target.value }, false) }),
+        freeAnt ? partsBox() : null);
     }),
     ro ? null : h('div', { class: 'chips' },
       h('button', { type: 'button', class: 'chip add', onclick: () => add('Starlink', 'antenna') }, '+ Antena Starlink'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('OneWeb', 'antenna') }, '+ Otra antena (OneWeb, VSAT, TVRO…)'),
+      h('button', { type: 'button', class: 'chip add', onclick: () => add('VSAT', 'accessory') }, '+ Accesorios / dispositivos (módem, BUC, LNB…)'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('Peplink', 'router') }, '+ Router Peplink'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('SIM', 'sim') }, '+ SIM'),
       h('button', { type: 'button', class: 'chip add', onclick: () => add('Starlink', 'cable') }, '+ Cable'),
