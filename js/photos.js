@@ -2,8 +2,16 @@ import { icon } from './svg.js';
 // Fotos: hacer/elegir, pie de foto, ordenar, borrar y EDITAR (marcas movibles)
 import { h, toast, compressImage, confirmBox } from './ui.js';
 import { listPhotos, addPhoto, updatePhoto, deletePhoto, ensurePhotoData } from './store.js';
-import { openPhotoEditor, thumbFor } from './annot.js';
+import { thumbFor } from './annot.js';
 import { openAssistant, aiEnabled } from './ai.js';
+
+// El editor de fotos se carga al abrirlo: si no llega (sin conexión durante una actualización a medias), solo falla
+// abrir el editor, no la app. El reintento lo pide con otra URL porque el navegador recuerda la carga fallida de cada URL.
+let editorTry = 0, editorOpening = false;
+async function loadEditor() {
+  try { return await import(editorTry ? `./annot-editor.js?retry=${editorTry}` : './annot-editor.js'); }
+  catch (e) { editorTry++; throw e; }
+}
 
 export function photosField(report, category, ro) {
   const grid = h('div', { class: 'photos' }, h('div', { class: 'skel', style: { aspectRatio: '4/3' } }), h('div', { class: 'skel', style: { aspectRatio: '4/3' } }));
@@ -61,8 +69,14 @@ export function photosField(report, category, ro) {
     if (!(await confirmBox('¿Borrar esta foto?', 'Borrar'))) return;
     await deletePhoto(p); photos = photos.filter((x) => x.id !== p.id); draw();
   }
-  function edit(p) {
+  async function edit(p) {
     if (!p.dataUrl) return toast('La foto aún se está descargando');
+    if (editorOpening) return; // dos toques seguidos no abren dos editores
+    editorOpening = true;
+    let openPhotoEditor;
+    try { ({ openPhotoEditor } = await loadEditor()); }
+    catch { return toast('No se pudo abrir el editor. Conéctate a internet y vuelve a intentarlo.', 6000); }
+    finally { editorOpening = false; }
     openPhotoEditor(p, {
       caption: p.caption || '',
       onSave: async (annots, caption) => {

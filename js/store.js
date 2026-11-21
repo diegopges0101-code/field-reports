@@ -176,13 +176,13 @@ async function refreshPhotos(reportId) {
 /** Asegura que cada foto tenga su imagen (descarga de Drive y guarda en el dispositivo). */
 export async function ensurePhotoData(photos, onProgress) {
   const missing = photos.filter((p) => !p.dataUrl);
-  for (let i = 0; i < missing.length; i += 6) {
-    const chunk = missing.slice(i, i + 6);
+  for (let i = 0; i < missing.length; i += 3) { // bloques de 3: con fotos más grandes, cada respuesta pesa lo mismo que antes
+    const chunk = missing.slice(i, i + 3);
     const got = await api('getPhotos', { ids: chunk.map((p) => p.id) });
     for (const p of chunk) {
       if (got[p.id]) { p.dataUrl = got[p.id]; await idb.put('photos', { ...p }); }
     }
-    onProgress?.(Math.min(missing.length, i + 6), missing.length);
+    onProgress?.(Math.min(missing.length, i + 3), missing.length);
   }
   return photos;
 }

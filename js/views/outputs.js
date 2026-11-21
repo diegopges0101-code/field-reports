@@ -15,6 +15,9 @@ function peopleFor(r) {
 }
 function configFor(r) { return r.status === 'issued' && r.snapshot?.config ? r.snapshot.config : state.config; }
 
+/** Foto para el PDF: con sus marcas (textos con tr) y como mucho de 1800 px de lado largo, también sin marcas. */
+export const pdfPhoto = (p, tr) => renderAnnotated(p.dataUrl, p.annots, { maxSide: 1800, quality: 0.86, tr });
+
 async function makeModel(r) {
   const photos = await listPhotos(r.id, { cachedFirst: true });
   return { model: buildDoc({ report: r, photos, people: peopleFor(r) }), photos };
@@ -32,7 +35,7 @@ export async function generatePdf(r, onProgress) {
   const photoData = {};
   for (const p of photos.filter((x) => x.dataUrl)) {
     const tr = (a) => { const e = en[`photo.${p.id}.a.${a.id}`]; return e && e.src === (a.text || '').trim() && e.en?.trim() ? e.en.trim() : a.text; };
-    photoData[p.id] = p.annots?.length ? await renderAnnotated(p.dataUrl, p.annots, { maxSide: 1800, quality: 0.86, tr }) : p.dataUrl;
+    photoData[p.id] = await pdfPhoto(p, tr);
   }
   const cfg = configFor(r);
   const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: cfg.contact_line, logo: state.logo, photoData });

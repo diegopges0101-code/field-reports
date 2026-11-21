@@ -102,8 +102,8 @@ export function dataUrlToBytes(d) {
 }
 export async function blobToBase64(b) { return dataUrlToBase64(await blobToDataUrl(b)); }
 
-/** Reduce una foto a máx. 1600 px en JPEG (subidas rápidas con 4G). */
-export async function compressImage(file, maxSide = 1600, quality = 0.82) {
+/** Reduce una foto a máx. 2560 px en JPEG (la nitidez que necesitan las cotas y marcas; subidas en bloques pequeños). */
+export async function compressImage(file, maxSide = 2560, quality = 0.82) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
@@ -111,6 +111,8 @@ export async function compressImage(file, maxSide = 1600, quality = 0.82) {
     const c = document.createElement('canvas');
     c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', quality);
+    const out = c.toDataURL('image/jpeg', quality);
+    c.width = c.height = 0; // suelta ya los ~20 MB del lienzo (iOS tarda en liberarlos y se acumulan foto a foto)
+    return out;
   } finally { URL.revokeObjectURL(url); }
 }

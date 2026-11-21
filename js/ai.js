@@ -9,6 +9,7 @@ import { TEMPLATES } from './templates.js';
 import { state, listPhotos } from './store.js';
 import { STICKERS } from './stickers.js';
 import { renderAnnotated } from './annot.js';
+import { fmtDim } from './annot-geom.js';
 import { icon } from './svg.js';
 import { tr, lang } from './i18n.js';
 
@@ -30,7 +31,7 @@ const SKIP_TYPES = new Set(['info', 'photos', 'people']);
 const P = {
   es: {
     langName: 'español', mount: 'montura', section: 'tramo', total: 'total', antenna: 'antena', obstructions: 'obstrucciones', down: 'Mbps bajada', up: 'Mbps subida',
-    yes: 'Sí', no: 'No', proposed: '(posición propuesta)', cable: 'Recorrido de cable', dashed: 'discontinuo', from: 'desde', to: 'hasta', number: 'Número', photo: 'Foto', marks: 'Marcas',
+    yes: 'Sí', no: 'No', proposed: '(posición propuesta)', cable: 'Recorrido de cable', dashed: 'discontinuo', from: 'desde', to: 'hasta', number: 'Número', dimension: 'Cota', photo: 'Foto', marks: 'Marcas',
     docSurvey: 'Survey (visita técnica previa) para una instalación de antena/comunicaciones', docInstall: 'Informe de instalación de antena/comunicaciones', docType: 'Tipo de documento', place: 'Ubicación',
     photosTitle: '[Fotos y lo marcado en ellas]', survey: 'survey', install: 'informe de instalación',
     rules: 'Usa SOLO los datos que te doy: no inventes medidas, resultados, pruebas ni equipos. Si falta algún dato importante, indícalo al final entre corchetes.',
@@ -45,7 +46,7 @@ const P = {
   },
   en: {
     langName: 'English', mount: 'mount', section: 'section', total: 'total', antenna: 'antenna', obstructions: 'obstructions', down: 'Mbps down', up: 'Mbps up',
-    yes: 'Yes', no: 'No', proposed: '(proposed position)', cable: 'Cable route', dashed: 'dashed', from: 'from', to: 'to', number: 'Number', photo: 'Photo', marks: 'Marks',
+    yes: 'Yes', no: 'No', proposed: '(proposed position)', cable: 'Cable route', dashed: 'dashed', from: 'from', to: 'to', number: 'Number', dimension: 'Dimension', photo: 'Photo', marks: 'Marks',
     docSurvey: 'Survey (technical site visit) for an antenna/communications installation', docInstall: 'Antenna/communications installation report', docType: 'Document type', place: 'Location',
     photosTitle: '[Photos and what is marked on them]', survey: 'survey', install: 'installation report',
     rules: 'Use ONLY the data I give you: do not invent measurements, results, tests or equipment. If an important piece of data is missing, say so at the end in square brackets.',
@@ -60,7 +61,7 @@ const P = {
   },
   pt: {
     langName: 'português', mount: 'suporte', section: 'troço', total: 'total', antenna: 'antena', obstructions: 'obstruções', down: 'Mbps download', up: 'Mbps upload',
-    yes: 'Sim', no: 'Não', proposed: '(posição proposta)', cable: 'Percurso do cabo', dashed: 'tracejado', from: 'desde', to: 'até', number: 'Número', photo: 'Foto', marks: 'Marcas',
+    yes: 'Sim', no: 'Não', proposed: '(posição proposta)', cable: 'Percurso do cabo', dashed: 'tracejado', from: 'desde', to: 'até', number: 'Número', dimension: 'Cota', photo: 'Foto', marks: 'Marcas',
     docSurvey: 'Survey (visita técnica prévia) para uma instalação de antena/comunicações', docInstall: 'Relatório de instalação de antena/comunicações', docType: 'Tipo de documento', place: 'Localização',
     photosTitle: '[Fotos e o que está marcado nelas]', survey: 'survey', install: 'relatório de instalação',
     rules: 'Use APENAS os dados que lhe dou: não invente medidas, resultados, testes nem equipamentos. Se faltar algum dado importante, indique-o no fim entre parênteses retos.',
@@ -117,6 +118,7 @@ function annotText(a, all) {
     const from = a.links?.v0 && name(a.links.v0.s), last = a.links?.[`v${(a.pts || []).length - 1}`], to = last && name(last.s);
     return `${t.cable}${len.length ? ` ${len.join(' m + ')} m (${t.total} ${len.reduce((x, y) => x + y, 0)} m)` : ''}${a.dashed ? ' ' + t.dashed : ''}${from ? ` ${t.from} ${from}` : ''}${to ? ` ${t.to} ${to}` : ''}${a.text ? ` «${a.text}»` : ''}`;
   }
+  if (a.type === 'dim') return `${t.dimension} ${fmtDim(a.val, a.unit) || '?'}${a.text ? ` «${a.text}»` : ''}`;
   if (a.type === 'number') return `${t.number} ${a.n}${a.text ? ` «${a.text}»` : ''}`;
   return a.text ? `${tr(ANN_ES[a.type] || a.type)} «${a.text}»` : '';
 }
