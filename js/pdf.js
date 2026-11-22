@@ -292,7 +292,7 @@ export async function buildPdf(model, opts) {
       chrome(p, model.title);
       const isSpeed = g.category === 'SPEED TESTS';
       const lightWord = isSpeed ? '' : `${g.category} `;
-      const boldWord = isSpeed ? 'SPEED TESTS' : g.category === 'SKY VIEW' ? 'CHECK' : 'INSTALLATION IMAGES';
+      const boldWord = isSpeed ? 'SPEED TESTS' : g.category === 'SKY VIEW' ? 'CHECK' : g.category === 'MATERIAL LEFT ON SITE' ? 'IMAGES' : 'INSTALLATION IMAGES';
       text(p, lightWord, 35, 62, 28, fonts.reg, C.dark);
       text(p, boldWord, 35 + fonts.reg.widthOfTextAtSize(safe(lightWord), 28), 62, 28, fonts.bold, C.dark);
       const boxW = pair.length === 1 ? 780 : 420, gap = 20;

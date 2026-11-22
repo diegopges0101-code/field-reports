@@ -144,7 +144,71 @@ export const OPT = {
   finalStatus: [
     o('Completed', 'Completado'), o('Partially completed', 'Parcialmente completado'), o('Pending', 'Pendiente'),
   ],
+
+  // ---- Survey v2.10: tipo de trabajo, instalación existente, varias antenas y material ----
+  surveyScope: [
+    o('New installation', 'Instalación nueva'),
+    o('Replacement of the existing antenna', 'Sustitución de antena existente'),
+    o('Additional antenna (existing system kept)', 'Antena adicional (se mantiene la existente)'),
+    o('Technology change (e.g. VSAT to Starlink)', 'Cambio de tecnología (ej. VSAT → Starlink)'),
+    o('Relocation of the existing antenna', 'Reubicación de antena existente'),
+    o('Removal / decommissioning', 'Retirada / desmontaje'),
+  ],
+  existingKind: [
+    o('Antenna', 'Antena'), o('Mount / support', 'Montura / soporte'), o('Modem / router', 'Módem / router'),
+    o('BUC / LNB', 'BUC / LNB'), o('Cable', 'Cable'), o('Other', 'Otro'),
+  ],
+  existingCond: [
+    o('Working', 'Funciona'), o('Working with degraded performance', 'Funciona con degradación'), o('Not working', 'No funciona'),
+    o('Physically damaged', 'Dañada físicamente'), o('Not checked', 'No comprobado'),
+  ],
+  existingAction: [
+    o('To be replaced', 'Sustituir (se retira)'),
+    o('To be replaced – existing mount reused', 'Sustituir y reutilizar la montura'),
+    o('To be replaced – existing mount and cable reused', 'Sustituir y reutilizar montura y cable'),
+    o('To be relocated', 'Reubicar'),
+    o('To be removed (no replacement)', 'Retirar sin sustituir'),
+    o('Remains in service', 'Se mantiene en servicio'),
+    o('Remains as backup', 'Se mantiene como respaldo'),
+  ],
+  removedDest: [
+    o('Handed over to the client', 'Entregar al cliente'), o('Returned to our warehouse', 'Devolver a nuestro almacén'),
+    o('Left on site (client storage)', 'Dejar en el sitio (almacén del cliente)'), o('Returned to the supplier / RMA', 'Devolver al proveedor / RMA'),
+    o('Recycling (WEEE)', 'Reciclaje (RAEE)'), o('To be defined', 'Por definir'),
+  ],
+  cutover: [
+    o('No interruption expected (parallel operation)', 'Sin corte (funcionamiento en paralelo)'),
+    o('Short interruption (less than 1 hour)', 'Corte breve (menos de 1 h)'),
+    o('Planned outage window required', 'Requiere ventana de corte planificada'),
+    o('To be agreed with the client', 'A acordar con el cliente'),
+  ],
+  antRole: [
+    o('Main link', 'Enlace principal'), o('Additional capacity', 'Más capacidad'), o('Redundancy / backup', 'Redundancia / respaldo'),
+    o('Replacement of an existing antenna', 'Sustituye a una antena existente'), o('Separate service / network', 'Servicio o red independiente'),
+  ],
+  matType: [
+    o('Antenna', 'Antena'), o('Mount / support', 'Montura / soporte'), o('Ballast / blocks', 'Lastre / bloques'), o('Mast / pole', 'Mástil / tubo'),
+    o('Router / modem', 'Router / módem'), o('Cable', 'Cable'), o('Conduit / trunking', 'Tubo / canaleta'), o('Fixings / hardware', 'Tornillería / fijaciones'),
+    o('Power supply / PoE', 'Fuente / PoE'), o('Accessories', 'Accesorios'), o('Consumables', 'Consumibles varios'), o('Other', 'Otro'),
+  ],
+  matUnit: [o('pcs', 'uds'), o('m', 'm'), o('kit', 'kits'), o('box', 'cajas'), o('roll', 'rollos')],
+  matCond: [
+    o('New – original packaging', 'Nuevo – embalaje original'), o('New – unpacked', 'Nuevo – desembalado'),
+    o('Used – good condition', 'Usado – buen estado'), o('Damaged', 'Dañado'),
+  ],
+  leftChecks: [
+    o('Stored in a locked room', 'Guardado en local cerrado con llave'), o('Protected from the weather', 'Protegido de la intemperie'),
+    o('Labelled with the site reference', 'Etiquetado con la referencia del sitio'), o('Photographed', 'Fotografiado'),
+    o('Delivery note signed by the client', 'Albarán firmado por el cliente'), o('Client informed', 'Cliente informado'),
+    o('Not secured yet – action required', 'Sin asegurar – requiere acción'),
+  ],
 };
+
+// Tipos de trabajo que implican una instalación existente
+export const SCOPE_EXISTING = ['Replacement of the existing antenna', 'Additional antenna (existing system kept)', 'Technology change (e.g. VSAT to Starlink)', 'Relocation of the existing antenna', 'Removal / decommissioning'];
+const SCOPE_CHANGE = ['Replacement of the existing antenna', 'Technology change (e.g. VSAT to Starlink)', 'Relocation of the existing antenna', 'Removal / decommissioning'];
+export const hasExisting = (d) => (d.scope?.values ?? []).some((v) => SCOPE_EXISTING.includes(v)) || (d.existing ?? []).length > 0;
+const hasChange = (d) => (d.scope?.values ?? []).some((v) => SCOPE_CHANGE.includes(v)) || (d.existing ?? []).some((e) => e.action && !/^Remains/.test(e.action));
 
 // ---------------------------------------------------------------------
 // PASOS COMUNES
@@ -197,12 +261,17 @@ export const SURVEY = {
       id: 'antenna',
       title: 'Antena',
       fields: [
+        { key: 'scope', type: 'chips', label: 'Tipo de trabajo previsto', options: OPT.surveyScope, allowOther: true, help: 'Marca todo lo que aplique: p. ej. sustitución + antena adicional' },
+        { key: 'existing', type: 'existingAntennas', label: 'Instalación existente', showIf: hasExisting, help: 'Lo que ya hay instalado y qué se hará con cada cosa' },
+        { key: 'cutover', type: 'select', label: 'Corte de servicio durante el cambio', options: OPT.cutover, half: true, showIf: hasChange },
+        { key: 'existing_notes', type: 'textarea', label: 'Notas de la instalación existente', translatable: true, showIf: hasExisting },
         { key: 'antenna', type: 'antennaMount', label: 'Antena propuesta y montura' },
         { key: 'location', type: 'chips', label: 'Emplazamiento', options: OPT.location, allowOther: true },
         { key: 'surface', type: 'select', label: 'Tipo de superficie', options: OPT.surface, allowOther: true },
         { key: 'no_drilling', type: 'toggle', label: 'Sin perforación (preservar estanqueidad)' },
         { key: 'sky_view', type: 'select', label: 'Vista del cielo', options: OPT.skyView },
         { key: 'antenna_notes', type: 'textarea', label: 'Notas del emplazamiento', translatable: true },
+        { key: 'antennas_more', type: 'antennaList', label: 'Más antenas en este sitio', help: 'Solo si se instalará más de una antena. La de arriba es la antena 1.' },
       ],
     },
     {
@@ -238,9 +307,16 @@ export const SURVEY = {
       fields: [
         { key: 'destination', type: 'chips', label: 'Llegada del cable', options: OPT.destination, allowOther: true },
         { key: 'destination_notes', type: 'textarea', label: 'Notas de la llegada / integración', translatable: true },
-        { key: 'onsite_equipment', type: 'equipment', label: 'Material ya disponible en sitio' },
+        { key: 'onsite_equipment', type: 'equipment', label: 'Material ya disponible en sitio', help: 'Equipos del cliente o de una instalación anterior que se pueden aprovechar' },
         { key: 'onsite_notes', type: 'textarea', label: 'Notas del material en sitio', translatable: true, placeholder: 'Ej.: material depositado en el sitio, a asegurar hasta la intervención' },
+        { key: 'left_on_site', type: 'toggle', label: '¿Se deja material nuestro en el sitio?', help: 'Monturas, lastres, antenas, cable… que quedan en el sitio hasta la instalación' },
+        { key: 'left_items', type: 'materialList', mode: 'left', label: 'Material dejado en el sitio', showIf: (d) => d.left_on_site === true },
+        { key: 'left_storage', type: 'text', label: 'Dónde queda guardado', translatable: true, half: true, placeholder: 'Ej.: local técnico, planta -1', showIf: (d) => d.left_on_site === true },
+        { key: 'left_received_by', type: 'text', label: 'Recibido / custodiado por', half: true, placeholder: 'Nombre y cargo', showIf: (d) => d.left_on_site === true },
+        { key: 'left_checks', type: 'chips', label: 'Custodia del material', options: OPT.leftChecks, allowOther: true, showIf: (d) => d.left_on_site === true },
+        { key: 'left_notes', type: 'textarea', label: 'Notas del material dejado', translatable: true, showIf: (d) => d.left_on_site === true },
         { key: 'materials', type: 'chips', label: 'Material a aprovisionar', options: OPT.materials, allowOther: true },
+        { key: 'materials_list', type: 'materialList', mode: 'supply', label: 'Material a aprovisionar con cantidades (opcional)' },
         { key: 'materials_notes', type: 'textarea', label: 'Notas del material a aprovisionar', translatable: true },
       ],
     },
@@ -258,9 +334,11 @@ export const SURVEY = {
       id: 'photos',
       title: 'Fotos',
       fields: [
+        { key: 'ph_existing', type: 'photos', label: 'Fotos de la instalación existente', photoCategory: 'EXISTING', showIf: hasExisting },
         { key: 'ph_ext', type: 'photos', label: 'Fotos exteriores', photoCategory: 'EXTERIOR' },
         { key: 'ph_int', type: 'photos', label: 'Fotos interiores', photoCategory: 'INTERIOR' },
         { key: 'ph_sky', type: 'photos', label: 'Captura app Starlink (obstrucciones)', photoCategory: 'SKY VIEW' },
+        { key: 'ph_left', type: 'photos', label: 'Fotos del material dejado en el sitio', photoCategory: 'MATERIAL LEFT ON SITE', showIf: (d) => d.left_on_site === true },
       ],
     },
     englishStep,

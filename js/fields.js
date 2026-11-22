@@ -5,7 +5,7 @@ import { photosField } from './photos.js';
 import { OPT } from './templates.js';
 import { reverseGeocode, parseCoords, GEO_KEYS } from './geo.js';
 import { aiFieldButton } from './ai.js';
-import { speechLang } from './i18n.js';
+import { speechLang, tr } from './i18n.js';
 
 /**
  * ctx = { data, set(key, value, rerender), people, catalog, readOnly, report }
@@ -60,6 +60,12 @@ export function renderField(f, ctx) {
       return wrap(segmentsEditor(v || [], ro, (val, re) => set(val, re)));
     case 'antennaTests':
       return wrap(antennaTests(ctx, ro));
+    case 'existingAntennas':
+      return wrap(existingEditor(ctx.catalog, v || [], ro, (val, re) => set(val, re)));
+    case 'antennaList':
+      return wrap(antennaList(ctx, v || [], ro, (val, re) => set(val, re)));
+    case 'materialList':
+      return wrap(materialList(ctx.catalog, v || [], f.mode, ro, (val, re) => set(val, re)));
     case 'photos':
       return wrap(photosField(ctx.report, f.photoCategory, ro));
   }
@@ -457,4 +463,144 @@ function segmentsEditor(rows, ro, onChange) {
     h('div', { class: 'row between' },
       ro ? h('span') : h('button', { type: 'button', class: 'chip add', onclick: () => onChange([...rows, { id: uid(), desc: '' }], true) }, '+ Añadir tramo'),
       totalEl));
+}
+
+// ---------------------------------------------------------------------
+// SURVEY v2.10 — instalación existente, más antenas propuestas y material
+// ---------------------------------------------------------------------
+const optName = (list, v) => list.find((x) => x.v === v)?.es || v;
+const numIn = (value, ro, onNum, attrs = {}) => h('input', { type: 'number', min: 0, inputmode: 'decimal', step: 'any', value: value ?? '', disabled: ro, ...attrs,
+  oninput: (e) => onNum(e.target.value === '' ? '' : Number(e.target.value)) });
+// Lista editable genérica: tarjetas + "Otra igual" + quitar. `rows` se mantiene al día sin redibujar al escribir.
+function listState(rows0, onChange0) {
+  const st = { rows: rows0 };
+  st.change = (nv, re) => { st.rows = nv; onChange0(nv, re); };
+  st.patch = (id, p, re) => st.change(st.rows.map((r) => (r.id === id ? { ...r, ...p } : r)), re);
+  st.replace = (id, nv, re) => st.change(st.rows.map((r) => (r.id === id ? nv : r)), re);
+  st.remove = (id) => st.change(st.rows.filter((r) => r.id !== id), true);
+  st.cloneAfter = (r, copy) => { const i = st.rows.findIndex((x) => x.id === r.id); st.change([...st.rows.slice(0, i + 1), copy, ...st.rows.slice(i + 1)], true); };
+  return st;
+}
+const cardHead = (title, ro, onClone, onRemove) => h('div', { class: 'eq-head' }, h('span', {}, ...title),
+  ro ? null : h('div', { class: 'row' },
+    onClone ? h('button', { type: 'button', class: 'btn small', title: 'Añadir otro igual', onclick: onClone }, icon('plus', { size: 16 }), 'Otra igual') : null,
+    h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: onRemove }, icon('trash', { size: 16 }))));
+const REMOVED = ['To be replaced', 'To be replaced – existing mount reused', 'To be replaced – existing mount and cable reused', 'To be removed (no replacement)'];
+
+/** Instalación existente: qué hay (antena, montura, módem…), en qué estado y qué se hará con cada cosa. */
+function existingEditor(catalog, rows0, ro, onChange0) {
+  const st = listState(rows0, onChange0);
+  const [mId, mList] = datalist([...new Set(catalog.filter((c) => c.kind === 'antenna' || c.kind === 'router').map((c) => c.name))]);
+  const countBy = {};
+  const add = (kind) => st.change([...st.rows, { id: uid(), kind, system: kind === 'Antenna' ? 'Starlink' : '', qty: 1 }], true);
+  return h('div', { class: 'stack' }, mList,
+    rows0.map((r) => {
+      countBy[r.kind] = (countBy[r.kind] || 0) + 1;
+      const set = (p, re = false) => st.patch(r.id, p, re);
+      const ant = r.kind === 'Antenna';
+      return h('div', { class: 'card eq existing' },
+        cardHead([optName(OPT.existingKind, r.kind || 'Other'), ` ${countBy[r.kind]}`, h('span', { class: 'muted small tag' }, 'existente')], ro,
+          () => st.cloneAfter(r, { ...r, id: uid(), serial: '' }), () => st.remove(r.id)),
+        h('div', { class: 'grid3' },
+          sub('Tipo', optSel(OPT.existingKind, r.kind || '', ro, (k) => set({ kind: k }, true))),
+          sub('Sistema', h('select', { disabled: ro, onchange: (e) => set({ system: e.target.value }, true) },
+            h('option', { value: '' }, '— Elegir —'),
+            SYSTEMS.map((x) => h('option', { value: x, selected: x === r.system }, x)),
+            h('option', { value: '__other', selected: r.system === '__other' }, 'Otro…')),
+            r.system === '__other' ? h('input', { class: 'mt', placeholder: 'Escribe qué sistema o tecnología es', value: r.systemOther || '', disabled: ro, oninput: (e) => set({ systemOther: e.target.value }) }) : null),
+          sub('Marca y modelo', h('input', { list: mId, placeholder: 'Ej. Hughes HT2000, Starlink V4…', value: r.model || '', disabled: ro, autocomplete: 'off', oninput: (e) => set({ model: e.target.value }) }))),
+        h('div', { class: 'grid3 mt' },
+          sub('Estado actual', optSel(OPT.existingCond, r.cond || '', ro, (c) => set({ cond: c }))),
+          sub('Ubicación', optSel(OPT.location, r.location || '', ro, (l) => set({ location: l }))),
+          ant ? sub('Montura actual', h('input', { placeholder: 'Tipo de montura o soporte', value: r.mount || '', disabled: ro, oninput: (e) => set({ mount: e.target.value }) }))
+            : sub('Cantidad', numIn(r.qty || 1, ro, (n) => set({ qty: n || 1 }), { min: 1 }))),
+        h('div', { class: 'grid2 mt' },
+          sub('Qué se hará', optSel(OPT.existingAction, r.action || '', ro, (a) => set({ action: a }, true))),
+          REMOVED.includes(r.action) ? sub('Destino del equipo retirado', optSel(OPT.removedDest, r.dest || '', ro, (x) => set({ dest: x }))) : h('span')),
+        h('div', { class: 'grid2 mt' },
+          sub('Nº de serie (S/N, opcional)', h('input', { value: r.serial || '', disabled: ro, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', oninput: (e) => set({ serial: e.target.value }) })),
+          sub('Notas', h('input', { placeholder: 'Opcional', value: r.notes || '', disabled: ro, oninput: (e) => set({ notes: e.target.value }) }))));
+    }),
+    ro ? null : h('div', { class: 'chips' },
+      h('button', { type: 'button', class: 'chip add', onclick: () => add('Antenna') }, '+ Antena existente'),
+      h('button', { type: 'button', class: 'chip add', onclick: () => add('Mount / support') }, '+ Montura existente'),
+      h('button', { type: 'button', class: 'chip add', onclick: () => add('Modem / router') }, '+ Módem / router existente'),
+      h('button', { type: 'button', class: 'chip add', onclick: () => add('Other') }, '+ Otro equipo existente')));
+}
+
+/** Antenas 2, 3… del mismo sitio, cada una con su emplazamiento, montura y función. */
+function antennaList(ctx, rows0, ro, onChange0) {
+  const st = listState(rows0, onChange0);
+  const existingAnts = (ctx.data.existing || []).filter((e) => e.kind === 'Antenna');
+  const exLabel = (e, i) => [`${tr('Existente')} ${i + 1}`, e.model].filter(Boolean).join(': ');
+  const main = ctx.data.antenna || {};
+  const add = (base) => st.change([...st.rows, { id: uid(), system: 'Starlink', qty: 1, ...base }], true);
+  const fromMain = () => add({ system: main.system || 'Starlink', systemOther: main.systemOther, antenna: main.antenna, mount: main.mount, mountOther: main.mountOther,
+    brand: main.brand, diameter: main.diameter, dunit: main.dunit, band: main.band, antType: main.antType,
+    parts: main.parts ? main.parts.map((p) => ({ ...p, id: uid(), serial: '' })) : undefined, surface: ctx.data.surface !== '__other' ? ctx.data.surface : '' });
+  return h('div', { class: 'stack' },
+    rows0.map((r, i) => {
+      const set = (p, re = false) => st.patch(r.id, p, re);
+      return h('div', { class: 'card eq ant-more' },
+        cardHead(['Antena', ` ${i + 2}`, r.qty > 1 ? ` (x${r.qty})` : ''], ro,
+          () => st.cloneAfter(r, { ...r, id: uid(), parts: r.parts ? r.parts.map((p) => ({ ...p, id: uid(), serial: '' })) : undefined }), () => st.remove(r.id)),
+        antennaMount(ctx.catalog, r, ro, (nv, re) => st.replace(r.id, nv, re)),
+        h('div', { class: 'grid3 mt' },
+          sub('Función', optSel(OPT.antRole, r.role || '', ro, (x) => set({ role: x }, true))),
+          existingAnts.length ? sub('Sustituye a', h('select', { disabled: ro, onchange: (e) => set({ replaces: e.target.value }) },
+            h('option', { value: '' }, '— Ninguna —'), existingAnts.map((e, j) => h('option', { value: e.id, selected: e.id === r.replaces }, exLabel(e, j))))) : null,
+          sub('Cantidad', numIn(r.qty || 1, ro, (n) => set({ qty: n || 1 }), { min: 1, inputmode: 'numeric', step: 1 }))),
+        h('div', { class: 'grid3 mt' },
+          sub('Emplazamiento', optSel(OPT.location, r.location || '', ro, (x) => set({ location: x }))),
+          sub('Tipo de superficie', optSel(OPT.surface, r.surface || '', ro, (x) => set({ surface: x }))),
+          sub('Vista del cielo', optSel(OPT.skyView, r.sky || '', ro, (x) => set({ sky: x })))),
+        h('div', { class: 'grid2 mt' },
+          sub('Cable estimado (m)', numIn(r.cable_m, ro, (n) => set({ cable_m: n }))),
+          sub('Notas', h('input', { placeholder: 'Ubicación exacta, orientación…', value: r.notes || '', disabled: ro, oninput: (e) => set({ notes: e.target.value }) }))));
+    }),
+    ro ? null : h('div', { class: 'chips' },
+      (main.antenna || main.brand) ? h('button', { type: 'button', class: 'chip add', onclick: fromMain }, '+ Otra igual que la antena 1') : null,
+      h('button', { type: 'button', class: 'chip add', onclick: () => add({}) }, '+ Añadir antena')));
+}
+
+/** Lista de material con cantidades: lo que se deja en el sitio (mode 'left') o lo que hay que aprovisionar ('supply'). */
+const QUICK_MAT = ['Antenna', 'Mount / support', 'Ballast / blocks', 'Mast / pole', 'Router / modem', 'Cable', 'Conduit / trunking', 'Other'];
+const MAT_CATALOG = { Antenna: ['antenna'], 'Mount / support': ['mount'], 'Router / modem': ['router'], Cable: ['cable'] };
+function materialList(catalog, rows0, mode, ro, onChange0) {
+  const st = listState(rows0, onChange0);
+  const left = mode === 'left';
+  const lists = {};
+  const listFor = (type) => {
+    const kinds = MAT_CATALOG[type] || ['accessory'];
+    const key = kinds.join();
+    if (!lists[key]) lists[key] = datalist([...new Set(catalog.filter((c) => kinds.includes(c.kind) && c.active).map((c) => c.name))]);
+    return lists[key][0];
+  };
+  const rowsEl = rows0.map((r) => {
+    const set = (p, re = false) => st.patch(r.id, p, re);
+    return h('div', { class: 'part mat' },
+      h('div', { class: 'part-head' },
+        h('select', { class: 'part-type', disabled: ro, onchange: (e) => set({ type: e.target.value }, true) },
+          OPT.matType.map((x) => h('option', { value: x.v, selected: x.v === r.type }, x.es))),
+        r.type === 'Other' ? h('input', { class: 'part-what', placeholder: '¿Qué es?', value: r.typeOther || '', disabled: ro, oninput: (e) => set({ typeOther: e.target.value }) }) : h('span', { class: 'grow' }),
+        ro ? null : h('button', { type: 'button', class: 'btn small', title: 'Añadir otro igual', onclick: () => st.cloneAfter(r, { ...r, id: uid(), serial: '' }) }, icon('plus', { size: 16 })),
+        ro ? null : h('button', { type: 'button', class: 'btn small danger', title: 'Quitar', onclick: () => st.remove(r.id) }, icon('trash', { size: 16 }))),
+      h('div', { class: 'grid4' },
+        sub('Descripción / modelo', h('input', { list: listFor(r.type), placeholder: 'Marca, modelo o descripción', value: r.desc || '', disabled: ro, autocomplete: 'off', oninput: (e) => set({ desc: e.target.value }) })),
+        left ? sub('Estado', optSel(OPT.matCond, r.cond || '', ro, (x) => set({ cond: x })))
+          : sub('Notas', h('input', { placeholder: 'Opcional', value: r.notes || '', disabled: ro, oninput: (e) => set({ notes: e.target.value }) })),
+        sub('Unidad', h('select', { disabled: ro, onchange: (e) => set({ unit: e.target.value }) },
+          OPT.matUnit.map((x) => h('option', { value: x.v, selected: x.v === (r.unit || 'pcs') }, x.es)))),
+        sub('Cantidad', numIn(r.qty ?? 1, ro, (n) => set({ qty: n }), { min: 0 }))),
+      left ? h('div', { class: 'grid2 mt' },
+        sub('Nº de serie (S/N, opcional)', h('input', { value: r.serial || '', disabled: ro, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', oninput: (e) => set({ serial: e.target.value }) })),
+        sub('Notas', h('input', { placeholder: 'Opcional', value: r.notes || '', disabled: ro, oninput: (e) => set({ notes: e.target.value }) }))) : null);
+  });
+  return h('div', { class: 'parts mat-list' },
+    Object.values(lists).map(([, el]) => el),
+    rows0.length ? null : h('div', { class: 'muted small' }, left ? 'Pulsa lo que dejas: se añade una línea con su cantidad.' : 'Opcional: añade líneas con cantidades exactas.'),
+    rowsEl,
+    ro ? null : h('div', { class: 'chips' },
+      // Botones rápidos para lo más habitual; el resto se elige en la lista "Tipo" de cada línea
+      OPT.matType.filter((x) => QUICK_MAT.includes(x.v)).map((x) => h('button', { type: 'button', class: 'chip add', onclick: () => st.change([...st.rows, { id: uid(), type: x.v, qty: 1, unit: ['Cable', 'Conduit / trunking'].includes(x.v) ? 'm' : 'pcs' }], true) }, x.v === 'Other' ? '+ Otro…' : `+ ${x.es}`))));
 }

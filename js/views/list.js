@@ -11,7 +11,8 @@ export const TYPE_LABEL = { survey: 'Survey', installation: 'Installation Report
 const NOT_COPIED = ['site_code', 'site_name', 'contract', 'gps', 'address', 'postcode', 'city', 'region', 'region_code', 'country', 'country_code', 'client_contact', 'recipient_email', 'start_time', 'end_time',
   'ip', 'mask', 'gateway', 'dns', 'sl_status', 'sl_obstructions', 'sl_down', 'sl_up', 'sl_latency', 'sl_notes',
   'pp_tests', 'pp_notes', 'final_status', 'pending', 'issues', 'final_notes', 'feasibility', 'conditions', 'conclusion',
-  'sky_view', 'sl_tests', 'antenna_notes', 'route_notes', 'access_notes', 'destination_notes', 'onsite_notes', 'onsite_equipment'];
+  'sky_view', 'sl_tests', 'antenna_notes', 'route_notes', 'access_notes', 'destination_notes', 'onsite_notes', 'onsite_equipment',
+  'existing', 'existing_notes', 'cutover', 'left_on_site', 'left_items', 'left_storage', 'left_received_by', 'left_checks', 'left_notes'];
 
 const filters = { q: '', type: '', status: '', mine: false };
 

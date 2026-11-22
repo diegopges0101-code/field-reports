@@ -38,6 +38,20 @@ export function getTranslatables(r, photos) {
             });
         if (f.type === 'antennaMount')
             (v?.parts ?? []).forEach((p) => push(`${f.key}.p.${p.id}`, `Notas accesorio ${partName(p)}`.trim(), p.notes));
+        if (f.type === 'existingAntennas')
+            v?.forEach((e, i) => push(`${f.key}.${e.id}.notes`, `Instalación existente ${i + 1} – notas`, e.notes));
+        if (f.type === 'antennaList')
+            v?.forEach((a, i) => {
+                push(`${f.key}.${a.id}.notes`, `Antena ${i + 2} – notas`, a.notes);
+                (a.parts ?? []).forEach((p) => push(`${f.key}.${a.id}.p.${p.id}`, `Notas accesorio ${partName(p)}`.trim(), p.notes));
+            });
+        if (f.type === 'materialList')
+            v?.forEach((m, i) => {
+                if (m.type === 'Other')
+                    push(`${f.key}.${m.id}.t`, `${f.label} – línea ${i + 1}`, m.typeOther);
+                push(`${f.key}.${m.id}.desc`, `${f.label} – línea ${i + 1}`, m.desc);
+                push(`${f.key}.${m.id}.notes`, `${f.label} – notas línea ${i + 1}`, m.notes);
+            });
     }
     if (r.type === 'installation') {
         const tests = d.sl_tests ?? {};
@@ -63,7 +77,10 @@ export function trState(english, item) {
         return 'outdated';
     return e.status === 'edited' ? 'edited' : 'ok';
 }
-const PHOTO_ORDER = ['EXTERIOR', 'INTERIOR', 'SKY VIEW', 'SPEED TESTS'];
+const PHOTO_ORDER = ['EXISTING', 'EXTERIOR', 'INTERIOR', 'SKY VIEW', 'MATERIAL LEFT ON SITE', 'SPEED TESTS'];
+// Acciones sobre equipos existentes que implican retirarlos
+const REMOVED = ['To be replaced', 'To be replaced – existing mount reused', 'To be replaced – existing mount and cable reused', 'To be removed (no replacement)'];
+const UNIT_EN = { kit: ['kit', 'kits'], box: ['box', 'boxes'], roll: ['roll', 'rolls'] };
 export function formatDate(iso) {
     if (!iso)
         return '';
@@ -145,6 +162,16 @@ export function buildDoc(ctx) {
         };
     });
     const lineText = (x) => (x.value ? `${x.label} – ${x.value}` : x.label);
+    /** Material con cantidades: "Mount / support: Starlink Wall Mount (x2) – New – original packaging – S/N … – notas". */
+    const matLines = (key, withCond) => (visible(key) ? d[key] ?? [] : []).filter((m) => m.type).map((m, i) => {
+        const lbl = `${fieldByKey[key]?.label ?? key} – línea ${i + 1}`;
+        const type = m.type === 'Other' ? tx(`${key}.${m.id}.t`, m.typeOther, lbl) || 'Other' : m.type;
+        const desc = tx(`${key}.${m.id}.desc`, m.desc, lbl);
+        const q = num(m.qty), u = m.unit || 'pcs';
+        const qty = q == null ? '' : u === 'pcs' ? `x${q}` : u === 'm' ? `${q} m` : `${q} ${UNIT_EN[u]?.[q === 1 ? 0 : 1] ?? u}`;
+        return [`${type}${desc ? `: ${desc}` : ''}${qty ? ` (${qty})` : ''}`, withCond ? m.cond : '', (m.serial ?? '').trim() ? `S/N ${m.serial.trim()}` : '',
+            tx(`${key}.${m.id}.notes`, m.notes, `${fieldByKey[key]?.label ?? key} – notas línea ${i + 1}`)].filter(Boolean).join(' – ');
+    });
     const equipmentRows = (key) => (d[key] ?? []).flatMap((e) => {
         const man = e.manufacturer === 'Other' ? (e.manufacturerOther ?? '').trim() : ['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : '';
         const parts = FREE.includes(e.manufacturer) ? partLines(e.parts, `${key}.${e.id}`) : [];
@@ -183,10 +210,41 @@ export function buildDoc(ctx) {
         objective = chips('objective');
         const objNotes = txt('objective_notes');
         const siteRef = [client, siteCode, siteName].filter(Boolean).join(' ');
+        const scope = chips('scope');
         add('Purpose of the visit', [
             P(objective.length ? `The technical visit carried out on site ${siteRef} aimed to:` : ''),
             B(objective.map((s) => lc1(s))),
             P(objNotes),
+            P(scope.length ? 'Scope of work:' : '', true),
+            B(scope),
+        ]);
+        // ---- Instalación existente (sustitución, ampliación, reubicación, retirada)
+        const existing = visible('existing') ? (d.existing ?? []) : [];
+        const exSys = (e) => (e.system === '__other' ? (e.systemOther ?? '').trim() : e.system ?? '');
+        const exName = (e) => { const s = exSys(e), m = (e.model ?? '').trim(); return [s && !m.toLowerCase().includes(s.toLowerCase()) ? s : '', m].filter(Boolean).join(' '); };
+        const exCount = {};
+        const exBlocks = existing.flatMap((e) => {
+            const kind = e.kind === 'Other' || !e.kind ? 'Equipment' : e.kind;
+            exCount[kind] = (exCount[kind] || 0) + 1;
+            const notes = tx(`existing.${e.id}.notes`, e.notes, `Instalación existente – notas`);
+            return [
+                P(`Existing ${lc1(kind)} ${exCount[kind]}${exName(e) ? `: ${exName(e)}` : ''}${e.qty > 1 ? ` (x${e.qty})` : ''}`, true),
+                KV([
+                    ['Location', e.location ?? ''],
+                    ['Mount', (e.mount ?? '').trim()],
+                    ['Condition', e.cond ?? ''],
+                    ['Planned action', e.action ?? ''],
+                    ['Removed equipment', REMOVED.includes(e.action) ? e.dest ?? '' : ''],
+                    ['S/N', (e.serial ?? '').trim()],
+                    ['Notes', notes],
+                ]),
+            ];
+        });
+        const cutover = sel('cutover');
+        add('Existing installation', [
+            ...exBlocks,
+            KV([['Service interruption during the works', cutover]]),
+            P(txt('existing_notes')),
         ]);
         const am = (d.antenna ?? {});
         const mount = am.mount === '__other' ? (am.mountOther ?? '').trim() : am.mount ?? '';
@@ -194,7 +252,44 @@ export function buildDoc(ctx) {
         const sys = am.system === '__other' ? (am.systemOther ?? '').trim() : (am.system ?? 'Starlink');
         const fam = sys === 'Starlink' ? null : freeAntenna(am, 'antenna');
         const amParts = sys === 'Starlink' ? [] : partLines(am.parts, 'antenna');
-        add(`Proposed ${sys ? sys + ' ' : ''}antenna location`, [
+        // ---- Antenas 2, 3… del mismo sitio
+        const extras = (visible('antennas_more') ? (d.antennas_more ?? []) : [])
+            .filter((a) => a.antenna || a.brand || a.mount || a.location || a.role || a.notes || (a.system && a.system !== 'Starlink'));
+        const exAnts = existing.filter((e) => e.kind === 'Antenna');
+        const extraName = (a) => {
+            const s = a.system === '__other' ? (a.systemOther ?? '').trim() : (a.system ?? 'Starlink');
+            const f = s === 'Starlink' ? null : freeAntenna(a, 'antenna');
+            return { sys: s, fam: f, name: f ? f.name : (a.antenna ?? '') };
+        };
+        const extraBlocks = extras.flatMap((a, i) => {
+            const { sys: s, fam: f, name } = extraName(a);
+            const q = num(a.qty) ?? 1;
+            const rep = exAnts.findIndex((e) => e.id === a.replaces);
+            const pl = s === 'Starlink' ? [] : partLines(a.parts, `antennas_more.${a.id}`);
+            return [
+                P(`Antenna ${i + 2}${q > 1 ? ` (x${q})` : ''}`, true),
+                KV([
+                    ['System', s],
+                    ['Antenna', name],
+                    ['Band', f && a.band ? a.band : ''],
+                    ['Antenna type', f ? a.antType ?? '' : ''],
+                    ['Role', a.role ?? ''],
+                    ['Replaces', rep >= 0 ? `Existing antenna ${rep + 1}${exName(exAnts[rep]) ? ` (${exName(exAnts[rep])})` : ''}` : ''],
+                    ['Location', a.location ?? ''],
+                    ['Surface', a.surface ?? ''],
+                    ['Mount', a.mount === '__other' ? (a.mountOther ?? '').trim() : a.mount ?? ''],
+                    [s === 'Starlink' ? 'Sky view (Starlink app)' : 'Sky view', a.sky ?? ''],
+                    ['Estimated cable length', num(a.cable_m) != null ? `approx. ${num(a.cable_m)} m` : ''],
+                ]),
+                P(pl.length ? 'Accessories and devices to be used with this antenna:' : '', true),
+                B(pl.map(lineText)),
+                P(tx(`antennas_more.${a.id}.notes`, a.notes, `Antena ${i + 2} – notas`)),
+            ];
+        });
+        const totalAnt = 1 + extras.reduce((n, a) => n + (num(a.qty) ?? 1), 0);
+        add(extras.length ? 'Proposed antenna locations' : `Proposed ${sys ? sys + ' ' : ''}antenna location`, [
+            P(extras.length ? `${totalAnt} antennas are proposed for this site.` : ''),
+            P(extras.length ? 'Antenna 1' : '', true),
             KV([
                 ['System', sys === 'Starlink' ? '' : sys],
                 ['Antenna', fam ? fam.name : am.antenna ?? ''],
@@ -209,6 +304,7 @@ export function buildDoc(ctx) {
             B(amParts.map(lineText)),
             P(d.no_drilling ? 'No drilling is recommended, in order to preserve the integrity and waterproofing of the roof.' : ''),
             P(txt('antenna_notes')),
+            ...extraBlocks,
         ]);
         const segs = (d.route_segments ?? []).filter((s) => s.desc || s.length);
         const total = segs.reduce((a, s) => a + (num(s.length) ?? 0), 0);
@@ -251,10 +347,23 @@ export function buildDoc(ctx) {
             B(onsite.map(lineText)),
             P(txt('onsite_notes')),
         ]);
+        // ---- Material dejado en el sitio (custodia hasta la instalación)
+        const leftOn = d.left_on_site === true;
+        const leftLines = leftOn ? matLines('left_items', true) : [];
+        const leftChecks = chips('left_checks');
+        add('Materials left on site', [
+            P(leftLines.length ? 'The following items were left on site after the visit, pending the installation:' : ''),
+            B(leftLines),
+            KV([['Storage location', txt('left_storage')], ['Received / held by', leftOn ? (d.left_received_by ?? '').trim() : '']]),
+            P(leftChecks.length ? 'Custody:' : '', true),
+            B(leftChecks),
+            P(txt('left_notes')),
+        ]);
         const materials = chips('materials');
+        const matList = matLines('materials_list', false);
         add('Materials to be supplied', [
-            P(materials.length ? 'Before planning the installation, the following items must be provided:' : ''),
-            B(materials),
+            P(materials.length || matList.length ? 'Before planning the installation, the following items must be provided:' : ''),
+            B([...materials, ...matList]),
             P(txt('materials_notes')),
         ]);
         const ppe = chips('ppe');
@@ -281,7 +390,12 @@ export function buildDoc(ctx) {
             ['Site', [client, siteCode, siteName].filter(Boolean).join(' ')],
             ['GPS', (d.gps ?? '').trim()],
             ['Address', siteAddress(d)],
+            ['Scope', scope.join(', ')],
+            ['Existing installation', existing.length ? [...new Set(existing.map((e) => [exName(e) || e.kind, e.action && lc1(e.action)].filter(Boolean).join(' – ')))].join('; ') : ''],
+            ['Service interruption', cutover],
             ['Installation', [sys === 'Starlink' || (fam?.name ?? am.antenna ?? '').toLowerCase().includes(sys.toLowerCase()) ? '' : sys, fam ? fam.name : am.antenna ?? ''].filter(Boolean).join(' ')],
+            ['Additional antennas', extras.map((a) => { const x = extraName(a); const q = num(a.qty) ?? 1; return [x.sys !== 'Starlink' && !x.name.toLowerCase().includes(x.sys.toLowerCase()) ? x.sys : '', x.name || 'antenna', q > 1 ? `(x${q})` : '', a.location ? `– ${a.location}` : ''].filter(Boolean).join(' '); }).join('; ')],
+            ['Total antennas', extras.length ? String(totalAnt) : ''],
             ['Location', loc.join(', ')],
             ['Mount', mount],
             ['Initial route', initial],
@@ -291,6 +405,7 @@ export function buildDoc(ctx) {
             ['Intermediate switch', d.switch_needed === true ? 'Required' : d.switch_needed === false ? 'Not required' : ''],
             ['Destination', dest.join(', ')],
             ['Access', [access.join(', '), nv('mewp_height', 'm') ? `max. ${nv('mewp_height', 'm')}` : ''].filter(Boolean).join(' – ')],
+            ['Materials left on site', leftLines.length ? `Yes – ${leftLines.length} item line${leftLines.length > 1 ? 's' : ''}${txt('left_storage') ? `, ${txt('left_storage')}` : ''}` : ''],
             ['PPE', ppe.length ? 'Mandatory' : ''],
             ['Result', result],
         ].forEach((r) => r[1] && summary.push(r));
@@ -511,7 +626,12 @@ export function whatsappText(m) {
     if (m.kind === 'survey') {
         const pick = (k) => m.summary.find(([a]) => a === k)?.[1];
         const work = [
-            pick('Installation') && `Antenna: ${pick('Installation')}`,
+            pick('Scope') && `Scope: ${pick('Scope')}`,
+            pick('Existing installation') && `Existing: ${pick('Existing installation')}`,
+            pick('Service interruption') && `Service interruption: ${pick('Service interruption')}`,
+            pick('Installation') && `Antenna${pick('Additional antennas') ? ' 1' : ''}: ${pick('Installation')}`,
+            pick('Additional antennas') && `Additional antennas: ${pick('Additional antennas')}`,
+            pick('Total antennas') && `Total antennas: ${pick('Total antennas')}`,
             pick('Location') && `Location: ${pick('Location')}`,
             pick('Mount') && `Mount: ${pick('Mount')}`,
             pick('Proposed route') && `Proposed route: ${pick('Proposed route')}`,
@@ -522,7 +642,14 @@ export function whatsappText(m) {
             L.push('*Survey*');
             work.forEach((w) => L.push(`• ${w}`));
         }
-        const mat = m.sections.find((s) => s.title.includes('Materials'));
+        const left = m.sections.find((s) => s.title.includes('Materials left on site'));
+        const leftItems = left?.blocks.find((b) => b.type === 'bullets');
+        if (leftItems?.items.length) {
+            L.push('', '*Left on site*');
+            leftItems.items.forEach((i) => L.push(`• ${i}`));
+            left.blocks.filter((b) => b.type === 'kv').forEach((b) => b.rows.forEach(([k, v]) => L.push(`${k}: ${v}`)));
+        }
+        const mat = m.sections.find((s) => s.title.includes('Materials to be supplied'));
         const matItems = mat?.blocks.find((b) => b.type === 'bullets');
         if (matItems?.items.length) {
             L.push('', '*To be supplied*');

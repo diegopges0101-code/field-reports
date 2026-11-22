@@ -821,3 +821,14 @@ input[type=checkbox], input[type=radio] { accent-color: var(--ink); box-shadow: 
 .part-head .part-type { width: auto; max-width: 55%; font-weight: 600; }
 .part-head .part-what { flex: 1; min-width: 0; }
 .parts .chips { margin-top: 4px; }
+
+/* v2.10.0 — survey: instalación existente, varias antenas y material dejado en el sitio */
+.card.eq.existing { border-left: 3px solid var(--ink-3, #71717a); }
+.card.eq.ant-more { border-left: 3px solid var(--ink, #18181b); }
+.card.eq .sat-ant, .card.eq .parts { margin-top: 10px; }
+.mat-list { margin-top: 0; }
+.mat-list > .muted { margin-bottom: 8px; }
+.part.mat .part-head .btn.small { padding-inline: 8px; }
+.eq-head .tag { font-weight: 500; margin-left: 6px; text-transform: lowercase; }
+@media (max-width: 759px) { .part.mat .grid4 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 72px; } .part.mat .grid4 > :first-child { grid-column: 1 / -1; } }
+.part.mat .part-head .part-type { max-width: 72%; }

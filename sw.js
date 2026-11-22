@@ -1,7 +1,7 @@
 // Service worker: la app se abre desde la memoria del móvil al instante (y sin cobertura).
 // Los archivos de la app (FILES) salen SOLO de la caché de su versión, que se llena entera al instalarse: una versión
 // nunca mezcla archivos de otra. La siguiente llega con su propio service worker. Sube este número al publicar cambios.
-const CACHE = 'field-reports-v2.9.0';
+const CACHE = 'field-reports-v2.10.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'vendor/pdf-lib.min.js',
   'js/app.js', 'js/api.js', 'js/config.js', 'js/db.js', 'js/english.js', 'js/fields.js', 'js/pdf.js',

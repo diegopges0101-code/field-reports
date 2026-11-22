@@ -5,7 +5,7 @@
 //  Nunca se envían emails, teléfonos, IP ni números de serie.
 // =====================================================================
 import { h, toast, modal, copyText, downloadBlob, dataUrlToBytes } from './ui.js';
-import { TEMPLATES } from './templates.js';
+import { TEMPLATES, OPT } from './templates.js';
 import { state, listPhotos } from './store.js';
 import { STICKERS } from './stickers.js';
 import { renderAnnotated } from './annot.js';
@@ -23,7 +23,7 @@ export const aiEnabled = () => String(state.config?.ai_enabled ?? 'true') !== 'f
 const provider = () => (PROVIDERS[LS.get('fr_ai', 'chatgpt')] ? LS.get('fr_ai', 'chatgpt') : 'chatgpt');
 
 // Datos que NUNCA salen de la app
-const NEVER = new Set(['client_contact', 'recipient_email', 'technicians', 'supervisor', 'ip', 'mask', 'gateway', 'dns', 'contract', 'gps']);
+const NEVER = new Set(['left_received_by', 'client_contact', 'recipient_email', 'technicians', 'supervisor', 'ip', 'mask', 'gateway', 'dns', 'contract', 'gps']);
 const CLIENT_DATA = new Set(['client', 'site_code', 'site_name', 'address', 'postcode']);
 const SKIP_TYPES = new Set(['info', 'photos', 'people']);
 
@@ -77,6 +77,8 @@ const P = {
 };
 const L = () => P[lang()] || P.en;
 
+const optLabelOf = (list, v) => (v ? list.find((o) => o.v === v)?.es || v : '');
+const amTxt = (v) => [[[v.system === '__other' ? v.systemOther : v.system, antTxt(v, 'antenna')].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${L().mount}: `), partsTxt(v.parts) && `(${partsTxt(v.parts)})`].filter(Boolean).join(' ');
 const optLabel = (f, v) => tr((f.options || []).find((o) => o.v === v)?.es || v);
 const other = (d, f, v) => (v === '__other' ? d[`${f.key}_other`] || '' : v);
 const kindEs = { antenna: 'Antena', router: 'Router', cable: 'Cable', accessory: 'Accesorio', sim: 'Tarjeta SIM' };
@@ -94,7 +96,11 @@ function valueText(f, v, d) {
     case 'toggle': return v === true ? t.yes : v === false ? t.no : '';
     case 'number': return `${v}${f.unit ? ' ' + f.unit : ''}`;
     case 'chips': return [...(v.values || []).map((x) => optLabel(f, x)), v.other].filter(Boolean).join(', ');
-    case 'antennaMount': return [[[v.system === '__other' ? v.systemOther : v.system, antTxt(v, 'antenna')].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${t.mount}: `), partsTxt(v.parts) && `(${partsTxt(v.parts)})`].filter(Boolean).join(' ');
+    case 'antennaMount': return amTxt(v);
+    // Survey v2.10 (sin números de serie ni nombres de personas)
+    case 'existingAntennas': return (v || []).map((e) => [tr(optLabelOf(OPT.existingKind, e.kind)), e.system === '__other' ? e.systemOther : e.system, e.model, e.qty > 1 && `x${e.qty}`, tr(optLabelOf(OPT.location, e.location)), e.mount && `${t.mount} ${e.mount}`, tr(optLabelOf(OPT.existingCond, e.cond)), e.action && `→ ${tr(optLabelOf(OPT.existingAction, e.action))}`, e.dest && `(${tr(optLabelOf(OPT.removedDest, e.dest))})`, e.notes].filter(Boolean).join(' ')).join('; ');
+    case 'antennaList': return (v || []).map((a) => [amTxt(a), a.qty > 1 && `x${a.qty}`, tr(optLabelOf(OPT.antRole, a.role)), tr(optLabelOf(OPT.location, a.location)), a.cable_m && `${a.cable_m} m`, a.notes].filter(Boolean).join(' ')).join('; ');
+    case 'materialList': return (v || []).map((m) => [m.type === 'Other' ? m.typeOther : tr(optLabelOf(OPT.matType, m.type)), m.desc, m.qty != null && m.qty !== '' && `${m.qty} ${tr(optLabelOf(OPT.matUnit, m.unit || 'pcs'))}`, tr(optLabelOf(OPT.matCond, m.cond)), m.notes].filter(Boolean).join(' ')).join('; ');
     case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.brand, e.model === '__other' ? e.modelOther : e.model, e.diameter && `${e.diameter} ${e.dunit || 'm'}`, e.band, e.antType, e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes, partsTxt(e.parts) && `(${partsTxt(e.parts)})`].filter(Boolean).join(' ')).filter(Boolean).join('; ');
     case 'segments': { const tot = (v || []).reduce((a, s) => a + (Number(s.length) || 0), 0); return (v || []).map((s) => `${s.desc || t.section} ${s.length ?? '?'} m`).join(', ') + (tot ? ` (${t.total} ${tot} m)` : ''); }
     case 'antennaTests': {
