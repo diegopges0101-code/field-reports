@@ -10,7 +10,10 @@ const LH = 13.5, FS = 10;
 
 const hex = (c) => { const n = parseInt(c.replace('#', ''), 16); return PDFLib.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 let C; // colores: se crean al generar el primer PDF (cuando el motor ya está cargado)
-const makeColors = () => ({ blue: hex('#1c4f86'), light: hex('#d5e6f4'), p1: hex('#dceaf6'), p2: hex('#bcd8ee'), p3: hex('#99c4e3'), band: hex('#eef3f8'), gray: hex('#5f6368'), dark: hex('#1f1f1f'), mid: hex('#4a4a4a'), white: hex('#ffffff'), line: hex('#333333') });
+// Paleta en blanco, negro y grises. Fondo blanco y textos en negro o gris oscuro.
+// En los bloques grises claros el texto es negro, y en los bloques oscuros (blue) es blanco, para que siempre haya contraste.
+// (El nombre «blue» se conserva por compatibilidad: ahora es el gris casi negro de los bloques principales.)
+const makeColors = () => ({ blue: hex('#1f1f1f'), light: hex('#e6e6e6'), p1: hex('#f2f2f2'), p2: hex('#e3e3e3'), p3: hex('#d2d2d2'), band: hex('#efefef'), gray: hex('#4d4d4d'), dark: hex('#111111'), mid: hex('#333333'), white: hex('#ffffff'), line: hex('#3a3a3a'), head: hex('#e8e8e8') });
 
 // Helvetica estándar solo admite WinAnsi: se sustituyen los símbolos no compatibles
 const WINANSI_EXTRA = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
@@ -266,7 +269,7 @@ export async function buildPdf(model, opts) {
         else if (it.kind === 'bullet') { text(p, '•', x + 1, y, FS, fonts.reg, C.gray); it.lines.forEach((ln) => { drawRunsLine(p, ln, x + 12, y, fonts, FS, C.gray); y += LH; }); y += 3; }
         else if (it.kind === 'gap') y += 8;
         else if (it.kind === 'thead') {
-          p.drawRectangle({ x, y: H - y - 20, width: COL_W, height: 20, borderColor: C.line, borderWidth: 0.7, color: hex('#f3f6f9') });
+          p.drawRectangle({ x, y: H - y - 20, width: COL_W, height: 20, borderColor: C.line, borderWidth: 0.7, color: C.head });
           p.drawLine({ start: { x: x + 150, y: H - y }, end: { x: x + 150, y: H - y - 20 }, color: C.line, thickness: 0.7 });
           text(p, 'Item', x + 75, y + 6, 9, fonts.bold, C.dark, { align: 'center' });
           text(p, 'Selected solution', x + 150 + (COL_W - 150) / 2, y + 6, 9, fonts.bold, C.dark, { align: 'center' });
