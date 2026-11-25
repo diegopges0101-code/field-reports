@@ -832,3 +832,24 @@ input[type=checkbox], input[type=radio] { accent-color: var(--ink); box-shadow: 
 .eq-head .tag { font-weight: 500; margin-left: 6px; text-transform: lowercase; }
 @media (max-width: 759px) { .part.mat .grid4 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 72px; } .part.mat .grid4 > :first-child { grid-column: 1 / -1; } }
 .part.mat .part-head .part-type { max-width: 72%; }
+
+/* ---- v2.11: confirmación de eliminación con contexto ---- */
+.modal-back.modal-del { z-index: 170; } /* por encima del editor de fotos */
+.del-rows { display: grid; gap: 4px; margin-bottom: 10px; }
+.del-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: baseline; }
+.del-k { color: var(--muted, #6b7280); font-size: 13px; }
+.del-v { font-weight: 600; overflow-wrap: anywhere; }
+.del-deps { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+.del-deps ul { margin: 4px 0 0; padding-left: 18px; }
+.del-cons { margin: 8px 0 4px; }
+.del-q { margin: 6px 0 0; font-weight: 600; }
+@media (max-width: 420px) { .del-row { grid-template-columns: 1fr; gap: 0; } }
+
+/* ---- v2.11: «Otro» con varios valores personalizados ---- */
+.mo-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.mo-item { display: flex; gap: 6px; align-items: center; }
+.mo-item input { flex: 1; min-width: 0; }
+.mo-add { display: flex; gap: 6px; align-items: center; }
+.mo-add input { flex: 1; min-width: 0; }
+.mo-add .btn { white-space: nowrap; }
+.mo-chips { margin-bottom: 2px; }
