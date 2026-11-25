@@ -1,16 +1,23 @@
 // Service worker: la app se abre desde la memoria del móvil al instante (y sin cobertura).
 // Los archivos de la app (FILES) salen SOLO de la caché de su versión, que se llena entera al instalarse: una versión
 // nunca mezcla archivos de otra. La siguiente llega con su propio service worker. Sube este número al publicar cambios.
-const CACHE = 'field-reports-v2.11.0';
+const CACHE = 'field-reports-v2.12.2';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'vendor/pdf-lib.min.js',
   'js/app.js', 'js/api.js', 'js/config.js', 'js/db.js', 'js/english.js', 'js/fields.js', 'js/pdf.js',
-  'js/photos.js', 'js/annot.js', 'js/annot-editor.js', 'js/annot-geom.js', 'js/icons.js', 'js/svg.js', 'js/geo.js', 'js/stickers.js', 'js/ai.js', 'js/i18n.js', 'js/i18n-dict.js', 'js/store.js', 'js/templates.js', 'js/ui.js', 'js/multi.js',
+  'js/photos.js', 'js/annot.js', 'js/annot-editor.js', 'js/annot-geom.js', 'js/icons.js', 'js/svg.js', 'js/geo.js', 'js/stickers.js', 'js/ai.js', 'js/i18n.js', 'js/i18n-dict.js', 'js/store.js', 'js/templates.js', 'js/ui.js', 'js/multi.js', 'js/merge.js', 'js/views/conflicts.js',
   'js/views/list.js', 'js/views/editor.js', 'js/views/outputs.js', 'js/views/admin.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-64.png',
 ];
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // Los archivos nuevos de la v2.11/v2.12 pueden no estar publicados todavía: si faltan, no bloquean la instalación
+  // (antes, un solo archivo inexistente hacía fallar la actualización y el móvil seguía con la versión vieja).
+  const OPTIONAL = new Set(['js/multi.js', 'js/merge.js', 'js/views/conflicts.js']);
+  const req = (f) => new Request(f, { cache: 'reload' });
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all([
+    c.addAll(FILES.filter((f) => !OPTIONAL.has(f)).map(req)),
+    ...[...OPTIONAL].map((f) => c.add(req(f)).catch(() => null)),
+  ])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
