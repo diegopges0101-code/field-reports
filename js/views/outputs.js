@@ -59,7 +59,10 @@ export async function generatePdf(r, onProgress) {
     photoData[p.id] = await pdfPhoto(p, tr);
   }
   const cfg = configFor(r);
-  const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: cfg.contact_line, logo: state.logo, photoData, palette: paletteNow || pdfPalette() });
+  // Esquina superior de la portada: solo el email del usuario que genera/descarga el PDF (no la línea de contacto de la empresa)
+  const me = state.user || {};
+  const myEmail = (me.email || (state.people || []).find((p) => p.id === me.id)?.email || '').trim();
+  const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: myEmail, logo: state.logo, photoData, palette: paletteNow || pdfPalette() });
   return { blob: new Blob([bytes], { type: 'application/pdf' }), model };
 }
 

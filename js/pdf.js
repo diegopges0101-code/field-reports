@@ -179,8 +179,9 @@ export async function buildPdf(model, opts) {
       return rows.length;
     };
     col(35, 270, 'Technician Details:', [
-      model.technicians ? [{ text: 'Technicians: ', bold: true }, { text: model.technicians }] : null,
+      // Primero el supervisor y debajo los técnicos
       model.supervisor ? [{ text: 'Supervisor: ', bold: true }, { text: model.supervisor }] : null,
+      model.technicians ? [{ text: 'Technicians: ', bold: true }, { text: model.technicians }] : null,
       model.dateText ? [{ text: 'Date: ', bold: true }, { text: model.dateText + (model.timeText ? ` (${model.timeText})` : '') }] : null,
       model.address ? [{ text: 'Address: ', bold: true }, { text: model.address }] : null,
       model.gps ? [{ text: 'GPS: ', bold: true }, { text: model.gps }] : null,
