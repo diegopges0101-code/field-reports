@@ -1,4 +1,4 @@
-import { h, toast, modal, confirmBox, fmtDateTime, copyText, compressImage, downloadBlob } from '../ui.js';
+import { h, toast, modal, confirmBox, confirmDelete, fmtDateTime, copyText, compressImage, downloadBlob } from '../ui.js';
 import { api } from '../api.js';
 import { state, bootstrap } from '../store.js';
 import { iconsZip, iconPreview, iconMode, setIconMode, applyLogoIcons } from '../icons.js';
@@ -115,7 +115,8 @@ export async function usersView(page) {
           try { const r = await api('resetPassword', { id: u.id }); showPassword(u.name, r.password); load(); } catch (e) { toast(e.message); }
         } }, icon('sync', { size: 16 }), 'Nueva contraseña'),
         me ? null : h('button', { class: 'btn small danger', onclick: async () => {
-          if (!(await confirmBox(`¿Eliminar a ${u.name}? Si solo quieres que no entre, mejor desactívalo.`, 'Eliminar'))) return;
+          if (!(await confirmDelete({ section: 'Usuarios', field: 'Usuario', value: [u.name, u.email].filter(Boolean).join(' · '),
+            consequence: 'el usuario no podrá entrar y desaparecerá de la lista. Si solo quieres que no entre, mejor desactívalo.' }))) return;
           try { await api('deleteUser', { id: u.id }); toast('Eliminado'); load(); } catch (e) { toast(e.message); }
         } }, icon('trash', { size: 16 }), 'Eliminar')));
   }

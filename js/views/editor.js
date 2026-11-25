@@ -6,7 +6,7 @@ import { state, loadReport, saveLocal, resolveConflict, sync, listPhotos, ensure
 import { TEMPLATES, missingRequired } from '../templates.js';
 import { renderField } from '../fields.js';
 import { getTranslatables, trState } from '../english.js';
-import { outputsStep } from './outputs.js';
+import { outputsStep, reportLabel } from './outputs.js';
 import { openAssistant, aiEnabled } from '../ai.js';
 import { lang, needsTranslation } from '../i18n.js';
 import { STATUS_LABEL, TYPE_LABEL } from './list.js';
@@ -104,6 +104,8 @@ export async function editorView(page, id, stepIdx) {
       else markSteps();
     },
     people: state.people, catalog: state.catalog, readOnly, get report() { return r; },
+    // contexto de los avisos de eliminación (v2.11)
+    get reportLabel() { return reportLabel(r); }, get section() { return tpl.steps[stepIdx]?.title || ''; },
   };
 
   function markSteps() {

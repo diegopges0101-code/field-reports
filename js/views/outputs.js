@@ -1,5 +1,5 @@
 import { icon } from '../svg.js';
-import { h, toast, modal, copyText, downloadBlob, confirmBox, promptBox, blobToBase64 } from '../ui.js';
+import { h, toast, modal, copyText, downloadBlob, confirmBox, confirmDelete, promptBox, blobToBase64 } from '../ui.js';
 import { api } from '../api.js';
 import { idb } from '../db.js';
 import { state, listPhotos, ensurePhotoData, sync, pendingCount } from '../store.js';
@@ -12,6 +12,12 @@ import { renderAnnotated } from '../annot.js';
 function peopleFor(r) {
   const src = r.status === 'issued' && r.snapshot?.people ? r.snapshot.people : state.people;
   return src.map((p) => ({ id: p.id, full_name: p.name }));
+}
+/** «Survey · SV-2026-014 · CODE – Sitio»: identifica el informe en los avisos. */
+export function reportLabel(r) {
+  if (!r) return '';
+  const site = [r.data?.site_code, r.data?.site_name].filter(Boolean).join(' – ');
+  return [r.type === 'survey' ? 'Survey Report' : 'Installation Report', r.number || 'nº pendiente', site].filter(Boolean).join(' · ');
 }
 function configFor(r) { return r.status === 'issued' && r.snapshot?.config ? r.snapshot.config : state.config; }
 
@@ -165,7 +171,13 @@ export function outputsStep(r, { onChanged }) {
     if (manager && r.status !== 'archived') actions.push(h('button', { class: 'btn', onclick: (e) => change(e.target, 'archived') }, 'Archivar'));
     if (manager && r.status === 'archived') actions.push(h('button', { class: 'btn', onclick: (e) => change(e.target, 'draft') }, 'Desarchivar'));
     if (r.status === 'draft' && (u.role === 'admin' || r.created_by === u.id)) actions.push(h('button', { class: 'btn danger', onclick: async () => {
-      if (!(await confirmBox('¿Borrar este borrador y sus fotos? No se puede deshacer.', 'Borrar'))) return;
+      let nPh = 0;
+      try { nPh = (await listPhotos(r.id, { cachedFirst: true })).length; } catch { /* sin datos de fotos */ }
+      const site = [r.data?.site_code, r.data?.site_name].filter(Boolean).join(' – ');
+      if (!(await confirmDelete({ report: reportLabel(r), section: 'Estado del informe', field: 'Informe completo (borrador)',
+        value: [site || '(sin sitio)', r.data?.client === '__other' ? r.data?.client_other : r.data?.client, r.data?.date].filter(Boolean).join(' · '),
+        dependents: [nPh ? `${nPh} foto(s) con sus marcas` : null, 'Todos los datos, equipos y textos del informe', 'Las traducciones al inglés'],
+        consequence: 'el borrador se borrará del servidor y de este dispositivo. No se puede deshacer.' }))) return;
       try { if (!r.isNew) await api('deleteReport', { id: r.id }); await idb.del('reports', r.id); toast('Borrado'); location.hash = '#/'; } catch (e) { toast(e.message); }
     } }, 'Borrar borrador'));
     box.appendChild(h('div', { class: 'card' }, h('h4', {}, 'Estado del informe'), actions.length ? h('div', { class: 'row wrap' }, actions) : h('p', { class: 'muted' }, 'No hay acciones disponibles en este estado.')));
