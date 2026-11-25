@@ -1,12 +1,27 @@
 import { icon } from '../svg.js';
-import { h, toast, modal, copyText, downloadBlob, confirmBox, confirmDelete, promptBox, blobToBase64 } from '../ui.js';
+import * as UI from '../ui.js';
+// Este fichero funciona también sobre la v2.10 (sin confirmDelete): entonces usa el aviso simple de siempre.
+const { h, toast, modal, copyText, downloadBlob, confirmBox, promptBox, blobToBase64 } = UI;
+const confirmDelete = UI.confirmDelete || ((info) => confirmBox('¿Borrar este borrador y sus fotos? No se puede deshacer.', 'Borrar'));
 import { api } from '../api.js';
 import { idb } from '../db.js';
 import { state, listPhotos, ensurePhotoData, sync, pendingCount } from '../store.js';
 import { TEMPLATES, missingRequired } from '../templates.js';
-import { tr } from '../i18n.js';
+import { tr, lang } from '../i18n.js';
 import { buildDoc, emailSubject, emailBody, whatsappText } from '../english.js';
-import { buildPdf } from '../pdf.js';
+import { buildPdf, PDF_PALETTES } from '../pdf.js';
+
+// ---------- Colores del PDF: se recuerdan en este dispositivo ----------
+const PALETTE_KEY = 'fr_pdf_palette';
+export function pdfPalette() { try { const v = localStorage.getItem(PALETTE_KEY); return PDF_PALETTES[v] ? v : 'original'; } catch { return 'original'; } }
+function setPdfPalette(v) { try { localStorage.setItem(PALETTE_KEY, v); } catch { /* sin almacenamiento: solo vale para esta sesión */ } }
+// Textos del selector en los tres idiomas de la app (no dependen del diccionario general)
+const PAL_TXT = {
+  es: { label: 'Colores del PDF', original: 'Original (azul)', gris: 'Blanco, negro y grises' },
+  en: { label: 'PDF colours', original: 'Original (blue)', gris: 'Black, white and greys' },
+  pt: { label: 'Cores do PDF', original: 'Original (azul)', gris: 'Preto, branco e cinzentos' },
+};
+let paletteNow = null; // elegido en pantalla (si localStorage no funciona)
 import { renderAnnotated } from '../annot.js';
 
 function peopleFor(r) {
@@ -44,8 +59,16 @@ export async function generatePdf(r, onProgress) {
     photoData[p.id] = await pdfPhoto(p, tr);
   }
   const cfg = configFor(r);
-  const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: cfg.contact_line, logo: state.logo, photoData });
+  const bytes = await buildPdf(model, { companyName: cfg.company_name, footer: cfg.footer_text, contactLine: cfg.contact_line, logo: state.logo, photoData, palette: paletteNow || pdfPalette() });
   return { blob: new Blob([bytes], { type: 'application/pdf' }), model };
+}
+
+function paletteSelect() {
+  const t = PAL_TXT[lang()] || PAL_TXT.en;
+  const cur = paletteNow || pdfPalette();
+  const sel = h('select', { class: 'pdf-palette', 'data-nt': '', onchange: () => { paletteNow = sel.value; setPdfPalette(sel.value); } },
+    Object.keys(PDF_PALETTES).map((k) => h('option', { value: k, selected: k === cur, 'data-nt': '' }, t[k] || k)));
+  return h('label', { class: 'row', style: { gap: '8px', alignItems: 'center', marginTop: '10px' } }, h('span', { 'data-nt': '', style: { whiteSpace: 'nowrap' } }, t.label), sel);
 }
 
 export function outputsStep(r, { onChanged }) {
@@ -87,6 +110,7 @@ export function outputsStep(r, { onChanged }) {
           const m = modal('Vista previa', h('iframe', { class: 'pdf-frame', src: url, title: 'PDF' }));
           m.el.classList.add('wide');
         }) }, 'Vista previa')),
+      paletteSelect(),
       status));
 
     // ---------- Correo ----------
