@@ -26,7 +26,7 @@
 //  - requestRender(), showHint(texto, ms), hideHint(), setReadout(texto | null).
 //  - prefs.snap / prefs.ortho / prefs.fine (localStorage pe-…), ctxBar (.pe-ctx) y loupe.
 // =====================================================================
-import { h, uid } from './ui.js';
+import { h, uid, confirmDelete } from './ui.js';
 import { COLORS, drawAnnots, loadImage, stickerGeom, stickerPortPts } from './annot.js';
 import { STICKERS, STICKER_ORDER, stickerThumb } from './stickers.js';
 import { fitView, zoomAt, clampView, toImage, toScreen, maxScale, constrainAngle, angleDeg, distSeg, fmtDim, normDecimal, FINE_FACTOR } from './annot-geom.js';
@@ -88,6 +88,7 @@ const PREFS = [
 // Marcas: tipos con dos extremos (con imán y asas '1' y '2'; la cota lleva además el asa 'off') y tipos con texto (v2.8)
 const LINEISH = ['callout', 'arrow', 'line'];
 const ENDPOINTS = [...LINEISH, 'dim'];
+const TOOL_NAME = Object.fromEntries(TOOLS.map(([k, name]) => [k, name]));
 const CABLE_TOOLS = ['callout', 'arrow', 'line', 'route']; // con ellas se ven los puntos verdes de los equipos
 const TEXT_TYPES = ['callout', 'text', 'number', 'circle', 'rect', 'route', 'sticker'];
 const PLACEHOLDER = { callout: 'Descripción (ej. Antena Starlink)', text: 'Texto', number: 'Qué señala este número', circle: 'Etiqueta (opcional)', rect: 'Etiqueta (opcional)', route: 'Texto al final (ej. Infra Veolia)', sticker: 'Etiqueta (opcional, ej. Antena propuesta)' };
@@ -162,7 +163,7 @@ const coarse = (e) => e.pointerType !== 'mouse'; // dedo o lápiz: zonas de toqu
 const isPointKey = (k) => k === '1' || k === '2' || k[0] === 'v'; // asas con imán y Ángulo
 const TAU = Math.PI * 2;
 
-export function openPhotoEditor(photo, { caption = '', onSave }) {
+export function openPhotoEditor(photo, { caption = '', onSave, delInfo }) {
   // =================================================================
   //  ESTADO
   // =================================================================
@@ -686,7 +687,18 @@ export function openPhotoEditor(photo, { caption = '', onSave }) {
     if (a.type === 'circle' || a.type === 'rect') Object.assign(a, { x1: a.x1 - d, y1: a.y1 - d * r, x2: a.x1 + d, y2: a.y1 + d * r });
     else { Object.assign(a, { x2: Math.min(0.97, a.x1 + 0.16), y2: Math.max(0.03, a.y1 - 0.1 * r) }); setLink(a, '2', null); }
   }
-  function deleteMark(a) {
+  // v2.11: borrar una marca pide confirmación con qué se borra (Requerimiento 01, mejora 4)
+  let confirming = false;
+  async function deleteMark(a) {
+    if (confirming) return;
+    confirming = true;
+    let ok;
+    try {
+      const what = [TOOL_NAME[a.type] || a.type, (a.text || '').trim()].filter(Boolean).join(': ');
+      ok = await confirmDelete({ ...(delInfo ? delInfo() : {}), field: 'Marcas de la foto', value: what,
+        consequence: 'se quitará esta marca de la foto; podrás deshacerlo antes de guardar y las demás marcas se conservan.' });
+    } finally { confirming = false; }
+    if (!ok || !annots.includes(a)) return;
     snapshot();
     annots = annots.filter((x) => x !== a);
     if (selId === a.id) { selId = null; active = null; }

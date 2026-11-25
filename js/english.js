@@ -1,4 +1,7 @@
 import { TEMPLATES, allFields } from './templates.js';
+import { oneValue, bandText } from './multi.js';
+/** Campos de las antenas 2, 3… con «Otro» que se traducen (textos descriptivos, no datos técnicos). */
+const EXTRA_TR = { role: 'Función', location: 'Emplazamiento', surface: 'Tipo de superficie' };
 /** Accesorios y dispositivos de antenas fuera de Starlink/Peplink (módem, BUC, LNB…). */
 const partType = (p) => (p.type === 'Other' ? (p.typeOther ?? '').trim() || 'Other' : p.type || 'Other');
 const partName = (p) => [partType(p), [p.brand, p.model].map((x) => (x ?? '').trim()).filter(Boolean).join(' ')].filter(Boolean).join(': ');
@@ -8,8 +11,11 @@ export function freeAntenna(e, modelKey) {
     const brand = (e.brand ?? '').trim();
     const dia = (e.diameter ?? '').toString().trim();
     const name = [brand && !model.toLowerCase().includes(brand.toLowerCase()) ? brand : '', model, dia ? `${dia} ${e.dunit || 'm'}` : ''].filter(Boolean).join(' ');
-    const specs = [e.band ? `${e.band} band` : '', e.antType ?? ''].filter(Boolean).join(' · ');
-    return { name, specs, free: !!(brand || dia || e.band || e.antType) };
+    // v2.11: varias bandas y valores personalizados («Otro»); los informes antiguos tienen un único texto
+    const band = bandText(e);
+    const antType = oneValue(e, 'antType');
+    const specs = [band ? `${band} band${band.includes(', ') ? 's' : ''}` : '', antType].filter(Boolean).join(' · ');
+    return { name, specs, band, antType, free: !!(brand || dia || band || antType) };
 }
 export function getTranslatables(r, photos) {
     const t = TEMPLATES[r.type];
@@ -43,6 +49,7 @@ export function getTranslatables(r, photos) {
         if (f.type === 'antennaList')
             v?.forEach((a, i) => {
                 push(`${f.key}.${a.id}.notes`, `Antena ${i + 2} – notas`, a.notes);
+                Object.entries(EXTRA_TR).forEach(([k, lbl]) => { if (a[k] === '__other') push(`${f.key}.${a.id}.${k}`, `Antena ${i + 2} – ${lbl} (otro)`, oneValue(a, k)); });
                 (a.parts ?? []).forEach((p) => push(`${f.key}.${a.id}.p.${p.id}`, `Notas accesorio ${partName(p)}`.trim(), p.notes));
             });
         if (f.type === 'materialList')
@@ -259,8 +266,10 @@ export function buildDoc(ctx) {
         const extraName = (a) => {
             const s = a.system === '__other' ? (a.systemOther ?? '').trim() : (a.system ?? 'Starlink');
             const f = s === 'Starlink' ? null : freeAntenna(a, 'antenna');
-            return { sys: s, fam: f, name: f ? f.name : (a.antenna ?? '') };
+            return { sys: s, fam: f, name: f ? f.name : oneValue(a, 'antenna') };
         };
+        // Opción de la lista o, con «Otro», sus valores personalizados traducidos
+        const extraVal = (a, i, k) => (a[k] === '__other' ? tx(`antennas_more.${a.id}.${k}`, oneValue(a, k), `Antena ${i + 2} – ${EXTRA_TR[k]} (otro)`) : a[k] ?? '');
         const extraBlocks = extras.flatMap((a, i) => {
             const { sys: s, fam: f, name } = extraName(a);
             const q = num(a.qty) ?? 1;
@@ -271,12 +280,12 @@ export function buildDoc(ctx) {
                 KV([
                     ['System', s],
                     ['Antenna', name],
-                    ['Band', f && a.band ? a.band : ''],
-                    ['Antenna type', f ? a.antType ?? '' : ''],
-                    ['Role', a.role ?? ''],
+                    ['Band', f ? f.band : ''],
+                    ['Antenna type', f ? f.antType : ''],
+                    ['Role', extraVal(a, i, 'role')],
                     ['Replaces', rep >= 0 ? `Existing antenna ${rep + 1}${exName(exAnts[rep]) ? ` (${exName(exAnts[rep])})` : ''}` : ''],
-                    ['Location', a.location ?? ''],
-                    ['Surface', a.surface ?? ''],
+                    ['Location', extraVal(a, i, 'location')],
+                    ['Surface', extraVal(a, i, 'surface')],
                     ['Mount', a.mount === '__other' ? (a.mountOther ?? '').trim() : a.mount ?? ''],
                     [s === 'Starlink' ? 'Sky view (Starlink app)' : 'Sky view', a.sky ?? ''],
                     ['Estimated cable length', num(a.cable_m) != null ? `approx. ${num(a.cable_m)} m` : ''],
@@ -292,9 +301,9 @@ export function buildDoc(ctx) {
             P(extras.length ? 'Antenna 1' : '', true),
             KV([
                 ['System', sys === 'Starlink' ? '' : sys],
-                ['Antenna', fam ? fam.name : am.antenna ?? ''],
-                ['Band', fam && am.band ? am.band : ''],
-                ['Antenna type', fam ? am.antType ?? '' : ''],
+                ['Antenna', fam ? fam.name : oneValue(am, 'antenna')],
+                ['Band', fam ? fam.band : ''],
+                ['Antenna type', fam ? fam.antType : ''],
                 ['Location', loc.join(', ')],
                 ['Surface', sel('surface')],
                 ['Mount', mount],
@@ -393,8 +402,8 @@ export function buildDoc(ctx) {
             ['Scope', scope.join(', ')],
             ['Existing installation', existing.length ? [...new Set(existing.map((e) => [exName(e) || e.kind, e.action && lc1(e.action)].filter(Boolean).join(' – ')))].join('; ') : ''],
             ['Service interruption', cutover],
-            ['Installation', [sys === 'Starlink' || (fam?.name ?? am.antenna ?? '').toLowerCase().includes(sys.toLowerCase()) ? '' : sys, fam ? fam.name : am.antenna ?? ''].filter(Boolean).join(' ')],
-            ['Additional antennas', extras.map((a) => { const x = extraName(a); const q = num(a.qty) ?? 1; return [x.sys !== 'Starlink' && !x.name.toLowerCase().includes(x.sys.toLowerCase()) ? x.sys : '', x.name || 'antenna', q > 1 ? `(x${q})` : '', a.location ? `– ${a.location}` : ''].filter(Boolean).join(' '); }).join('; ')],
+            ['Installation', [sys === 'Starlink' || (fam?.name ?? oneValue(am, 'antenna')).toLowerCase().includes(sys.toLowerCase()) ? '' : sys, fam ? fam.name : oneValue(am, 'antenna')].filter(Boolean).join(' ')],
+            ['Additional antennas', extras.map((a) => { const x = extraName(a); const q = num(a.qty) ?? 1; return [x.sys !== 'Starlink' && !x.name.toLowerCase().includes(x.sys.toLowerCase()) ? x.sys : '', x.name || 'antenna', q > 1 ? `(x${q})` : '', a.location ? `– ${extraVal(a, extras.indexOf(a), 'location')}` : ''].filter(Boolean).join(' '); }).join('; ')],
             ['Total antennas', extras.length ? String(totalAnt) : ''],
             ['Location', loc.join(', ')],
             ['Mount', mount],

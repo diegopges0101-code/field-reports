@@ -1,6 +1,6 @@
 import { icon } from './svg.js';
 // Fotos: hacer/elegir, pie de foto, ordenar, borrar y EDITAR (marcas movibles)
-import { h, toast, compressImage, confirmBox } from './ui.js';
+import { h, toast, compressImage, confirmDelete } from './ui.js';
 import { listPhotos, addPhoto, updatePhoto, deletePhoto, ensurePhotoData } from './store.js';
 import { thumbFor } from './annot.js';
 import { openAssistant, aiEnabled } from './ai.js';
@@ -13,7 +13,7 @@ async function loadEditor() {
   catch (e) { editorTry++; throw e; }
 }
 
-export function photosField(report, category, ro) {
+export function photosField(report, category, ro, dc = () => ({})) {
   const grid = h('div', { class: 'photos' }, h('div', { class: 'skel', style: { aspectRatio: '4/3' } }), h('div', { class: 'skel', style: { aspectRatio: '4/3' } }));
   const status = h('div', { class: 'muted small mt' });
   let photos = [];
@@ -66,7 +66,11 @@ export function photosField(report, category, ro) {
     photos.sort((x, y) => x.sort - y.sort); draw();
   }
   async function remove(p) {
-    if (!(await confirmBox('¿Borrar esta foto?', 'Borrar'))) return;
+    const n = photos.findIndex((x) => x.id === p.id) + 1;
+    const marks = p.annots?.length || 0;
+    if (!(await confirmDelete({ ...dc(), equipment: null, value: [`Foto ${n}`, (p.caption || '').trim()].filter(Boolean).join(' · '),
+      dependents: marks ? [`${marks} marca(s) dibujada(s) sobre la foto`] : [],
+      consequence: p.uploaded ? 'la foto se borrará de este informe y de la nube al sincronizar.' : 'la foto se borrará de este dispositivo (todavía no se había subido).' }))) return;
     await deletePhoto(p); photos = photos.filter((x) => x.id !== p.id); draw();
   }
   async function edit(p) {
@@ -79,6 +83,7 @@ export function photosField(report, category, ro) {
     finally { editorOpening = false; }
     openPhotoEditor(p, {
       caption: p.caption || '',
+      delInfo: () => ({ ...dc(), equipmentLabel: 'Foto', equipment: [`Foto ${photos.findIndex((x) => x.id === p.id) + 1}`, (p.caption || '').trim()].filter(Boolean).join(' · ') }),
       onSave: async (annots, caption) => {
         p.annots = annots; p.caption = caption;
         await updatePhoto(p, { annots, caption });

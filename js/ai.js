@@ -12,6 +12,7 @@ import { renderAnnotated } from './annot.js';
 import { fmtDim } from './annot-geom.js';
 import { icon } from './svg.js';
 import { tr, lang } from './i18n.js';
+import { oneValue, bandText } from './multi.js';
 
 const LS = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };
 
@@ -78,6 +79,8 @@ const P = {
 const L = () => P[lang()] || P.en;
 
 const optLabelOf = (list, v) => (v ? list.find((o) => o.v === v)?.es || v : '');
+/** Opción de la lista o, con «Otro», sus valores personalizados (v2.11). */
+const optOf = (list, obj, k) => (obj?.[k] === '__other' ? oneValue(obj, k) : optLabelOf(list, obj?.[k]));
 const amTxt = (v) => [[[v.system === '__other' ? v.systemOther : v.system, antTxt(v, 'antenna')].filter(Boolean).join(' '), v.mount === '__other' ? v.mountOther : v.mount].filter(Boolean).join(` – ${L().mount}: `), partsTxt(v.parts) && `(${partsTxt(v.parts)})`].filter(Boolean).join(' ');
 const optLabel = (f, v) => tr((f.options || []).find((o) => o.v === v)?.es || v);
 const other = (d, f, v) => (v === '__other' ? d[`${f.key}_other`] || '' : v);
@@ -85,7 +88,7 @@ const kindEs = { antenna: 'Antena', router: 'Router', cable: 'Cable', accessory:
 const manOf = (e) => (e.manufacturer === 'Other' ? e.manufacturerOther : (['OneWeb', 'VSAT', 'TVRO'].includes(e.manufacturer) ? e.manufacturer : ''));
 
 // Antena escrita a mano y sus accesorios (nunca se envían números de serie a la IA)
-const antTxt = (x, mk) => [x.brand, x[mk], x.diameter && `${x.diameter} ${x.dunit || 'm'}`, x.band, x.antType].filter(Boolean).join(' ');
+const antTxt = (x, mk) => [x.brand, mk === 'antenna' && x.antenna === '__other' ? oneValue(x, 'antenna') : x[mk], x.diameter && `${x.diameter} ${x.dunit || 'm'}`, bandText(x), oneValue(x, 'antType')].filter(Boolean).join(' ');
 const partsTxt = (ps) => (ps || []).map((p) => [p.type === 'Other' ? p.typeOther || 'Other' : p.type, p.brand, p.model, p.qty > 1 && `x${p.qty}`, p.notes].filter(Boolean).join(' ')).filter(Boolean).join(', ');
 function valueText(f, v, d) {
   if (v == null || v === '') return '';
@@ -99,9 +102,9 @@ function valueText(f, v, d) {
     case 'antennaMount': return amTxt(v);
     // Survey v2.10 (sin números de serie ni nombres de personas)
     case 'existingAntennas': return (v || []).map((e) => [tr(optLabelOf(OPT.existingKind, e.kind)), e.system === '__other' ? e.systemOther : e.system, e.model, e.qty > 1 && `x${e.qty}`, tr(optLabelOf(OPT.location, e.location)), e.mount && `${t.mount} ${e.mount}`, tr(optLabelOf(OPT.existingCond, e.cond)), e.action && `→ ${tr(optLabelOf(OPT.existingAction, e.action))}`, e.dest && `(${tr(optLabelOf(OPT.removedDest, e.dest))})`, e.notes].filter(Boolean).join(' ')).join('; ');
-    case 'antennaList': return (v || []).map((a) => [amTxt(a), a.qty > 1 && `x${a.qty}`, tr(optLabelOf(OPT.antRole, a.role)), tr(optLabelOf(OPT.location, a.location)), a.cable_m && `${a.cable_m} m`, a.notes].filter(Boolean).join(' ')).join('; ');
+    case 'antennaList': return (v || []).map((a) => [amTxt(a), a.qty > 1 && `x${a.qty}`, tr(optOf(OPT.antRole, a, 'role')), tr(optOf(OPT.location, a, 'location')), a.cable_m && `${a.cable_m} m`, a.notes].filter(Boolean).join(' ')).join('; ');
     case 'materialList': return (v || []).map((m) => [m.type === 'Other' ? m.typeOther : tr(optLabelOf(OPT.matType, m.type)), m.desc, m.qty != null && m.qty !== '' && `${m.qty} ${tr(optLabelOf(OPT.matUnit, m.unit || 'pcs'))}`, tr(optLabelOf(OPT.matCond, m.cond)), m.notes].filter(Boolean).join(' ')).join('; ');
-    case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.brand, e.model === '__other' ? e.modelOther : e.model, e.diameter && `${e.diameter} ${e.dunit || 'm'}`, e.band, e.antType, e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes, partsTxt(e.parts) && `(${partsTxt(e.parts)})`].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+    case 'equipment': return (v || []).map((e) => [tr(kindEs[e.kind] || e.kind), manOf(e), e.brand, e.model === '__other' ? e.modelOther : e.model, e.diameter && `${e.diameter} ${e.dunit || 'm'}`, bandText(e), oneValue(e, 'antType'), e.mount && `${t.mount} ${e.mount === '__other' ? e.mountOther : e.mount}`, e.qty > 1 && `x${e.qty}`, e.notes, partsTxt(e.parts) && `(${partsTxt(e.parts)})`].filter(Boolean).join(' ')).filter(Boolean).join('; ');
     case 'segments': { const tot = (v || []).reduce((a, s) => a + (Number(s.length) || 0), 0); return (v || []).map((s) => `${s.desc || t.section} ${s.length ?? '?'} m`).join(', ') + (tot ? ` (${t.total} ${tot} m)` : ''); }
     case 'antennaTests': {
       const ants = (d.equipment || []).filter((e) => e.kind === 'antenna');

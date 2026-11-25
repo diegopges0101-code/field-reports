@@ -55,6 +55,45 @@ export function confirmBox(text, okText = 'Aceptar') {
   });
 }
 
+/**
+ * Confirmación de eliminación con contexto (Requerimiento 01, mejora 4).
+ * info = { report, section, equipment, equipmentLabel, field, value, consequence, dependents: [texto…] }
+ * Muestra exactamente qué se elimina y solo resuelve true con «Confirmar eliminación».
+ * Cerrar con la X, Esc o fuera de la ventana equivale a «Cancelar».
+ */
+export function confirmDelete(info = {}) {
+  return new Promise((res) => {
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; window.removeEventListener('keydown', onKey, true); m.close(); res(ok); };
+    // El «Valor» es lo que escribió el usuario: no pasa por el diccionario de la interfaz (data-nt)
+    const row = (label, value, raw = false) => (value == null || String(value).trim() === '' ? null
+      : h('div', { class: 'del-row' }, h('span', { class: 'del-k' }, label), h('span', { class: 'del-v', 'data-nt': raw ? '' : null }, String(value))));
+    const deps = (info.dependents || []).filter(Boolean);
+    const body = h('div', { class: 'del-box' },
+      h('div', { class: 'del-rows' },
+        row('Informe', info.report), row('Sección', info.section), row(info.equipmentLabel || 'Equipo', info.equipment),
+        row('Campo', info.field), row('Valor', info.value, true)),
+      deps.length ? h('div', { class: 'del-deps' }, h('strong', {}, 'También se eliminará:'), h('ul', {}, deps.map((d) => h('li', {}, d)))) : null,
+      h('p', { class: 'del-cons' }, h('strong', {}, 'Consecuencia: '), info.consequence || 'el elemento se eliminará del informe.'),
+      h('p', { class: 'del-q' }, '¿Desea continuar?'));
+    const cancel = h('button', { type: 'button', class: 'btn', onclick: () => finish(false) }, 'Cancelar');
+    const ok = h('button', { type: 'button', class: 'btn danger', onclick: () => finish(true) }, 'Confirmar eliminación');
+    const m = modal('Confirmar eliminación', body, [cancel, ok]);
+    m.el.parentElement.classList.add('modal-del');
+    // cerrar con la X o fuera de la ventana = cancelar
+    m.el.parentElement.addEventListener('click', (e) => { if (e.target === m.el.parentElement) finish(false); });
+    m.el.querySelector('.modal-head button')?.addEventListener('click', () => finish(false));
+    // El editor de fotos escucha el teclado en window: el aviso se queda con Esc / Intro mientras está abierto
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); finish(false); }
+      else if (e.key === 'Enter' && document.activeElement === ok) { e.preventDefault(); e.stopImmediatePropagation(); finish(true); }
+      else if (!m.el.contains(e.target)) e.stopImmediatePropagation();
+    }
+    window.addEventListener('keydown', onKey, true);
+    setTimeout(() => cancel.focus(), 30); // el foco empieza en «Cancelar»: Intro no borra por accidente
+  });
+}
+
 export function promptBox(title, label, value = '') {
   return new Promise((res) => {
     const inp = h('textarea', { rows: 3 }, value);
