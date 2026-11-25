@@ -10,10 +10,14 @@ const LH = 13.5, FS = 10;
 
 const hex = (c) => { const n = parseInt(c.replace('#', ''), 16); return PDFLib.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 let C; // colores: se crean al generar el primer PDF (cuando el motor ya está cargado)
-// Paleta en blanco, negro y grises. Fondo blanco y textos en negro o gris oscuro.
-// En los bloques grises claros el texto es negro, y en los bloques oscuros (blue) es blanco, para que siempre haya contraste.
-// (El nombre «blue» se conserva por compatibilidad: ahora es el gris casi negro de los bloques principales.)
-const makeColors = () => ({ blue: hex('#1f1f1f'), light: hex('#e6e6e6'), p1: hex('#f2f2f2'), p2: hex('#e3e3e3'), p3: hex('#d2d2d2'), band: hex('#efefef'), gray: hex('#4d4d4d'), dark: hex('#111111'), mid: hex('#333333'), white: hex('#ffffff'), line: hex('#3a3a3a'), head: hex('#e8e8e8') });
+// Paletas del PDF. Se elige al generarlo (selector «Colores del PDF» en Salidas).
+// En cada paleta: «blue» = bloques principales (texto blanco encima), light/p1/p2/p3/band = bloques claros (texto negro encima),
+// gray/mid/dark = textos, line = bordes de tabla, head = cabecera de tabla.
+export const PDF_PALETTES = {
+  original: { blue: '#1c4f86', light: '#d5e6f4', p1: '#dceaf6', p2: '#bcd8ee', p3: '#99c4e3', band: '#eef3f8', gray: '#5f6368', dark: '#1f1f1f', mid: '#4a4a4a', white: '#ffffff', line: '#333333', head: '#f3f6f9' },
+  gris: { blue: '#1f1f1f', light: '#e6e6e6', p1: '#f2f2f2', p2: '#e3e3e3', p3: '#d2d2d2', band: '#efefef', gray: '#4d4d4d', dark: '#111111', mid: '#333333', white: '#ffffff', line: '#3a3a3a', head: '#e8e8e8' },
+};
+const makeColors = (name) => Object.fromEntries(Object.entries(PDF_PALETTES[name] || PDF_PALETTES.original).map(([k, v]) => [k, hex(v)]));
 
 // Helvetica estándar solo admite WinAnsi: se sustituyen los símbolos no compatibles
 const WINANSI_EXTRA = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
@@ -110,7 +114,7 @@ export function ensurePdfLib() {
 
 export async function buildPdf(model, opts) {
   await ensurePdfLib();
-  C = C || makeColors();
+  C = makeColors(opts.palette); // la paleta elegida para este PDF
   const { PDFDocument, StandardFonts } = PDFLib;
   const doc = await PDFDocument.create();
   doc.setTitle(model.fileName.replace(/\.pdf$/, ''));
